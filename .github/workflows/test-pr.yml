@@ -1,0 +1,24 @@
+name: 'Build and Test PR'
+on:
+  pull_request:
+    branches:
+      - master
+concurrency:
+  # Latest code is always prioritized to run per workflow per branch.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+
+  build-and-test:
+    name: 'Poetry: Build and Test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Check out code'
+        uses: actions/checkout@v3
+      - name: 'Install Poetry'
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          poetry --version
+      - name: 'Formatting and Type Checking'
+        run: make -j4 || true
