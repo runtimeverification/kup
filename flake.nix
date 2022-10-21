@@ -18,10 +18,10 @@
         poetry2nix.overlay
         (final: prev:
           let
-            k-version =
+            kup-version =
               prev.lib.removeSuffix "\n" (builtins.readFile ./package/version);
             src = prev.stdenv.mkDerivation {
-              name = "k-${k-version}-${self.rev or "dirty"}-src";
+              name = "kup-${kup-version}-${self.rev or "dirty"}-src";
               src = prev.lib.cleanSource
                 (prev.nix-gitignore.gitignoreSourcePure [
                   ./.gitignore
@@ -40,7 +40,7 @@
           in {
             kup = prev.poetry2nix.mkPoetryApplication {
               python = prev.python39;
-              # projectDir = ./kup;
+              projectDir = .;
               overrides = prev.poetry2nix.overrides.withDefaults (
                 final: prev: {
                   mypy = prev.mypy.overridePythonAttrs (_old: {
