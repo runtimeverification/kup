@@ -1,0 +1,40 @@
+name: 'Build And Test in Container'
+
+on: 
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+concurrency:
+  # Latest code is always prioritized to run per workflow per branch. 
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+env: 
+  ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER: true
+jobs:
+  build-and-test:
+    runs-on: [self-hosted, linux]
+    # Action to use Dockerfile Setup fron runtimeverification/devops-actions
+    container: ubuntu:jammy
+  
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        with:
+          # Check out pull request HEAD instead of merge commit.
+          ref: ${{ github.event.pull_request.head.sha }}
+          submodules: recursive
+
+      - name: Install cachix
+        uses: cachix/cachix-action@v10
+        with:
+          name: runtimeverification
+          signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'        
+
+      - name: Build
+        run: | 
+          echo "Nix build"
+      
+      - name: Test
+        run: |
+          echo "Nix Test"
