@@ -191,7 +191,7 @@ def list_package(package_name: str) -> None:
 
         installed_packages_sha = {p.version for p in packages.values()}
 
-        table_data = [['Version \033[92m(installed)\033[0m', "Commit", "Message"],] + [
+        table_data = [['Version \033[92m(installed)\033[0m', "Commit", "Message"]] + [
             highlight_row(
                 p.sha in installed_packages_sha,
                 [p.tag if p.tag else "", p.sha[:7], textwrap.shorten(p.message, width=50, placeholder="...")],
