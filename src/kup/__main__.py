@@ -170,8 +170,8 @@ def list_package(package_name: str) -> None:
     if package_name != 'all':
         if package_name not in available_packages.keys():
             print(
-                f'❗ The package \'\033[94m{package_name}\033[0m\' does not exist.\n'
-                'Use \'\033[92mkup list\033[0m\' to see all the available packages.'
+                f"❗ The package '\033[94m{package_name}\033[0m' does not exist.\n"
+                "Use '\033[92mkup list\033[0m' to see all the available packages."
             )
             return
         listed_package = available_packages[package_name]
@@ -228,14 +228,14 @@ def install_package(package_name: str, package_version: Optional[str], local_pat
     reload_packages()
     if package_name not in available_packages.keys():
         print(
-            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.\n'
-            '\033[0mUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+            f"❗ \033[91mThe package '\033[94m{package_name}\033[91m' does not exist.\n"
+            "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
         )
         return
     if package_name in installed_packages and not (package_version or local_path):
         print(
-            f'❗ The package \'\033[94m{package_name}\033[0m\' is already installed.\n'
-            'Use \'\033[92mkup update {package_name}\033[0m\' to update to the latest version.'
+            f"❗ The package '\033[94m{package_name}\033[0m' is already installed.\n"
+            "Use '\033[92mkup update {package_name}\033[0m' to update to the latest version."
         )
         return
     if package_name in installed_packages:
@@ -250,19 +250,19 @@ def update_package(package_name: str, package_version: Optional[str], local_path
     reload_packages()
     if package_name not in available_packages.keys():
         print(
-            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.\n'
-            '\033[0mUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+            f"❗ \033[91mThe package '\033[94m{package_name}\033[91m' does not exist.\n"
+            "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
         )
         return
     if package_name not in installed_packages:
         print(
-            f'❗ The package \'\033[94m{package_name}\033[0m\' is not currently installed.\n'
-            'Use \'\033[92mkup install {package_name}\033[0m\' to install the latest version.'
+            f"❗ The package '\033[94m{package_name}\033[0m' is not currently installed.\n"
+            "Use '\033[92mkup install {package_name}\033[0m' to install the latest version."
         )
         return
     package = packages[package_name]
     if package.status == INSTALLED and not (package_version or local_path):
-        print(f'The package \'\033[94m{package_name}\033[0m\' is up to date.')
+        print(f"The package '\033[94m{package_name}\033[0m' is up to date.")
         return
 
     update_or_install_package(package, package_version, local_path)
@@ -272,17 +272,17 @@ def remove_package(package_name: str) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
         print(
-            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.\n'
-            '\033[0mUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+            f"❗ \033[91mThe package '\033[94m{package_name}\033[91m' does not exist.\n"
+            "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
         )
         return
     if package_name not in installed_packages:
-        print(f'❗ The package \'\033[94m{package_name}\033[0m\' is not currently installed.')
+        print(f"❗ The package '\033[94m{package_name}\033[0m' is not currently installed.")
         return
 
     if package_name == 'kup' and len(installed_packages) > 1:
         print(
-            '⚠️ \033[93mYou are about to remove \'\033[94mkup\033[93m\' '
+            "⚠️ \033[93mYou are about to remove '\033[94mkup\033[93m' "
             'with other K framework packages still installed.\n'
             '\033[0mAre you sure you want to continue? [y/N]'
         )
@@ -315,7 +315,7 @@ def main() -> None:
     install.add_argument('--version', type=str)
     install.add_argument('--local', type=str)
 
-    uninstall = subparser.add_parser('remove', help='Remove the given package from the user\'s PATH')
+    uninstall = subparser.add_parser('remove', help="Remove the given package from the user's PATH")
     uninstall.add_argument('package', type=str)
 
     update = subparser.add_parser('update', help='Update the package to the latest version')
@@ -342,8 +342,8 @@ def main() -> None:
         reload_packages()
         if args.package not in available_packages.keys():
             print(
-                f'❗ \033[91mThe package \'\033[94m{args.package}\033[91m\' does not exist.\n'
-                '\033[0mUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+                f"❗ \033[91mThe package '\033[94m{args.package}\033[91m' does not exist.\n"
+                "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
             )
             return
         temporary_package = available_packages[args.package]
