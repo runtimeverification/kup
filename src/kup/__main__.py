@@ -20,7 +20,10 @@ NIX_SUBSTITUTERS = [
     'https://k-framework.cachix.org https://cache.iog.io',
     '--option',
     'extra-trusted-public-keys',
-    'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=',
+    (
+        'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE='
+        'hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ='
+    ),
 ]
 
 
@@ -166,7 +169,8 @@ def list_package(package_name: str) -> None:
     if package_name != 'all':
         if package_name not in available_packages.keys():
             print(
-                f'❗ The package \'\033[94m{package_name}\033[0m\' does not exist. Use \'\033[92mkup list\033[0m\' to see all the available packages.'
+                f'❗ The package \'\033[94m{package_name}\033[0m\' does not exist.'
+                'Use \'\033[92mkup list\033[0m\' to see all the available packages.'
             )
             return
         listed_package = available_packages[package_name]
@@ -223,12 +227,14 @@ def install_package(package_name: str, package_version: Optional[str], local_pat
     reload_packages()
     if package_name not in available_packages.keys():
         print(
-            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.'
+            '\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
         )
         return
     if package_name in installed_packages and not (package_version or local_path):
         print(
-            f'❗ The package \'\033[94m{package_name}\033[0m\' is already installed.\nUse \'\033[92mkup update {package_name}\033[0m\' to update to the latest version.'
+            f'❗ The package \'\033[94m{package_name}\033[0m\' is already installed.'
+            '\nUse \'\033[92mkup update {package_name}\033[0m\' to update to the latest version.'
         )
         return
     if package_name in installed_packages:
@@ -243,12 +249,14 @@ def update_package(package_name: str, package_version: Optional[str], local_path
     reload_packages()
     if package_name not in available_packages.keys():
         print(
-            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.'
+            '\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
         )
         return
     if package_name not in installed_packages:
         print(
-            f'❗ The package \'\033[94m{package_name}\033[0m\' is not currently installed.\nUse \'\033[92mkup install {package_name}\033[0m\' to install the latest version.'
+            f'❗ The package \'\033[94m{package_name}\033[0m\' is not currently installed.\n'
+            'Use \'\033[92mkup install {package_name}\033[0m\' to install the latest version.'
         )
         return
     package = packages[package_name]
@@ -263,7 +271,8 @@ def remove_package(package_name: str) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
         print(
-            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+            f'❗ \033[91mThe package \'\033[94m{package_name}\033[91m\' does not exist.'
+            '\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
         )
         return
     if package_name not in installed_packages:
@@ -272,7 +281,9 @@ def remove_package(package_name: str) -> None:
 
     if package_name == "kup" and len(installed_packages) > 1:
         print(
-            '⚠️ \033[93mYou are about to remove \'\033[94mkup\033[93m\' with other K framework packages still installed.\033[0m\nAre you sure you want to continue? [y/N]'
+            '⚠️ \033[93mYou are about to remove \'\033[94mkup\033[93m\''
+            'with other K framework packages still installed.'
+            '\033[0m\nAre you sure you want to continue? [y/N]'
         )
 
         yes = {'yes', 'y', 'ye', ''}
@@ -330,7 +341,8 @@ def main() -> None:
         reload_packages()
         if args.package not in available_packages.keys():
             print(
-                f'❗ \033[91mThe package \'\033[94m{args.package}\033[91m\' does not exist.\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
+                f'❗ \033[91mThe package \'\033[94m{args.package}\033[91m\' does not exist.'
+                '\033[0m\nUse \'\033[92mkup list\033[0m\' to see all the available packages.'
             )
             return
         temporary_package = available_packages[args.package]
