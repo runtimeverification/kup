@@ -16,9 +16,8 @@ jobs:
     steps:
       - name: 'Check out code'
         uses: actions/checkout@v3
-      - name: 'Install poetry and virtualenv'
+      - name: 'Install Poetry'
         run: |
-          pip3 install virtualenv
           curl -sSL https://install.python-poetry.org | python3 -
           poetry --version
       - name: 'Formatting and Type Checking'
