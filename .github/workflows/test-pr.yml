@@ -1,5 +1,4 @@
 name: 'Build and Test PR'
-
 on:
   pull_request:
     branches:
@@ -10,7 +9,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+
   build-and-test:
+    name: 'Poetry: Build and Test'
     runs-on: ubuntu-latest
     steps:
       - name: 'Check out code'
