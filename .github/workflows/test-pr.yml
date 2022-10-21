@@ -19,7 +19,7 @@ jobs:
       - name: 'Install poetry and virtualenv'
         run: |
           pip3 install virtualenv
-          curl -sSL https://install.python-poetry.org | POETRY_HOME=/usr python3 -
+          curl -sSL https://install.python-poetry.org | python3 -
           poetry --version
       - name: 'Formatting and Type Checking'
         run: make -j4
