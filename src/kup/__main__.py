@@ -21,7 +21,7 @@ NIX_SUBSTITUTERS = [
     '--option',
     'extra-trusted-public-keys',
     (
-        'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE='
+        'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE= '
         'hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ='
     ),
 ]
