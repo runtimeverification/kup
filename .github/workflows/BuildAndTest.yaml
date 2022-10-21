@@ -13,7 +13,7 @@ env:
   ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER: true
 jobs:
   build-and-test:
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, linux, normal]
     # Action to use Dockerfile Setup fron runtimeverification/devops-actions
     container: ubuntu:jammy
   
