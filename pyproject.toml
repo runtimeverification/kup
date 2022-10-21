@@ -47,6 +47,3 @@ skip-string-normalization = true
 
 [tool.mypy]
 disallow_untyped_defs = true
-
-[tool.flake8]
-max-line-length = 120
