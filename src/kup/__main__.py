@@ -75,7 +75,7 @@ class AvailablePackage:
         self.package = package
 
 
-available_packages: dict[str, AvailablePackage] = {
+available_packages: Dict[str, AvailablePackage] = {
     'kup': AvailablePackage('k', f'packages.{SYSTEM}.kup'),
     'k': AvailablePackage('k', f'packages.{SYSTEM}.k'),
     'kevm': AvailablePackage('evm-semantics', f'packages.{SYSTEM}.kevm'),
