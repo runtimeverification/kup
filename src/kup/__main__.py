@@ -4,7 +4,7 @@ import subprocess
 import sys
 import textwrap
 from argparse import ArgumentParser
-from typing import Optional, Union
+from typing import Dict, List, Optional, Union
 
 import requests
 from terminaltables import SingleTable  # type: ignore
@@ -27,13 +27,14 @@ NIX_SUBSTITUTERS = [
 ]
 
 
-def nix_raw(args: list[str], extra_flags: list[str] = NIX_SUBSTITUTERS, gc_dont_gc: bool = True) -> bytes:
+def nix_raw(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS, gc_dont_gc: bool = True) -> bytes:
     my_env = os.environ.copy()
     if gc_dont_gc:
         my_env["GC_DONT_GC"] = "1"
     try:
         output = subprocess.check_output(
-            ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags, env=my_env
+            ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags,
+            env=my_env,
         )
     except subprocess.CalledProcessError as exc:
         print('❗ \033[91mThe operation could not be completed. See above for the error output ...\033[0m')
@@ -54,11 +55,11 @@ SYSTEM = (
 # The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
-def nix(args: list[str], extra_flags: list[str] = NIX_SUBSTITUTERS) -> bytes:
+def nix(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS) -> bytes:
     return nix_raw(args, extra_flags, True if "darwin" in SYSTEM else False)
 
 
-def nix_detach(args: list[str], extra_flags: list[str] = NIX_SUBSTITUTERS) -> None:
+def nix_detach(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS) -> None:
     my_env = os.environ.copy()
     if "darwin" in SYSTEM:
         my_env["GC_DONT_GC"] = "1"
@@ -96,8 +97,8 @@ class ConcretePackage:
         self.index = index
 
 
-packages: dict[str, ConcretePackage] = {}
-installed_packages: list[str] = []
+packages: Dict[str, ConcretePackage] = {}
+installed_packages: List[str] = []
 
 
 def check_package_version(p: AvailablePackage, current_url: str) -> str:
@@ -157,7 +158,7 @@ class PackageVersion:
         self.merged_at = merged_at
 
 
-def highlight_row(condition: bool, xs: list[str]) -> list[str]:
+def highlight_row(condition: bool, xs: List[str]) -> List[str]:
     if condition:
         return [f'\033[92m{x}\033[0m' for x in xs]
     else:
@@ -279,7 +280,7 @@ def remove_package(package_name: str) -> None:
         print(f'❗ The package \'\033[94m{package_name}\033[0m\' is not currently installed.')
         return
 
-    if package_name == "kup" and len(installed_packages) > 1:
+    if package_name == "kup" and len(list(installed_packages)) > 1:
         print(
             '⚠️ \033[93mYou are about to remove \'\033[94mkup\033[93m\''
             'with other K framework packages still installed.'
