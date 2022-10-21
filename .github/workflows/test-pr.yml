@@ -22,3 +22,5 @@ jobs:
           poetry --version
       - name: 'Formatting and Type Checking'
         run: make
+      - name: 'Kup list works'
+        run: poetry run kup list
