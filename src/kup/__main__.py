@@ -46,6 +46,7 @@ SYSTEM = (
     .replace('"', '')
 )
 
+
 # nix tends to fail on macs with a segfault so we add `GC_DONT_GC=1` if on macOS (i.e. darwin)
 # The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
