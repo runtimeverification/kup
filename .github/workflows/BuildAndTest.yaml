@@ -9,8 +9,7 @@ concurrency:
   # Latest code is always prioritized to run per workflow per branch. 
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
-env: 
-  ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
