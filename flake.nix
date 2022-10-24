@@ -3,16 +3,10 @@
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-22.05";
     flake-utils.url = "github:numtide/flake-utils";
-    rv-utils.url = "github:runtimeverification/rv-nix-tools";
-    # needed by nix/flake-compat-k-unwrapped.nix
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
-    };
     poetry2nix.url = "github:nix-community/poetry2nix";
   };
 
-  outputs = { self, nixpkgs, flake-utils, rv-utils, flake-compat, poetry2nix }:
+  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
     let
       allOverlays = [
         poetry2nix.overlay
@@ -41,13 +35,9 @@
             kup = prev.poetry2nix.mkPoetryApplication {
               python = prev.python39;
               projectDir = ./.;
-              overrides = prev.poetry2nix.overrides.withDefaults (
-                final: prev: {
-                  mypy = prev.mypy.overridePythonAttrs (_old: {
-                    MYPY_USE_MYPYC = false;
-                  });
-                }
-          );
+              groups = [];
+              # We remove `"dev"` from `checkGroups`, so that poetry2nix does not try to resolve dev dependencies.
+              checkGroups = [];
             };
           })
       ];
