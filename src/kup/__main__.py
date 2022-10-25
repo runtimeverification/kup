@@ -348,7 +348,7 @@ def mk_override_args(
             if override_input:
                 print(
                     f"⚠️ \033[93mThe input '\033[94m{input}\033[93m' you are trying to override follows '\033[94m{override_input}\033[93m'.\n",
-                    f"You may want to call this command with '\033[94m--override {override_input}\033[93m' instead.\033[0m"
+                    f"You may want to call this command with '\033[94m--override {override_input}\033[93m' instead.\033[0m",
                 )
             else:
                 print(
