@@ -3,10 +3,11 @@ import os
 import subprocess
 import sys
 import textwrap
-from argparse import ArgumentParser
-from typing import Dict, List, Optional, Union
+from argparse import ArgumentParser, BooleanOptionalAction
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
+from pptree import Node, print_tree
 from terminaltables import SingleTable  # type: ignore
 
 INSTALLED = '🟢 \033[92minstalled\033[0m'
@@ -50,7 +51,6 @@ SYSTEM = (
     .replace('"', '')
 )
 
-
 # nix tends to fail on macs with a segfault so we add `GC_DONT_GC=1` if on macOS (i.e. darwin)
 # The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
@@ -88,7 +88,13 @@ class ConcretePackage:
     __slots__ = ['repo', 'package', 'status', 'version', 'immutable', 'index']
 
     def __init__(
-        self, repo: str, package: str, status: str, version: str = '-', immutable: bool = True, index: int = -1
+        self,
+        repo: str,
+        package: str,
+        status: str,
+        version: str = '-',
+        immutable: bool = True,
+        index: int = -1,
     ):
         self.repo = repo
         self.package = package
@@ -110,6 +116,102 @@ def check_package_version(p: AvailablePackage, current_url: str) -> str:
         return INSTALLED
     else:
         return UPDATE
+
+
+# walk all the inputs and their inputs and collect only the ones pointing to runtimeverification repos
+def process_input(nodes: dict, key: str, override: bool = False) -> dict:
+    if (
+        'original' in nodes[key]
+        and 'owner' in nodes[key]['original']
+        and nodes[key]['original']['owner'] == 'runtimeverification'
+    ):
+        repo = nodes[key]['original']['repo']
+        rev = nodes[key]['locked']['rev']
+        if 'inputs' not in nodes[key]:
+            return {key: {'repo': repo, 'rev': rev}}
+        else:
+            inputs: dict = {}
+            for key_input, path in nodes[key]['inputs'].items():
+                if type(path) != list:
+                    inputs = inputs | process_input(nodes, path)
+                else:
+                    last = path[-1]
+                    if (
+                        'original' in nodes[last]
+                        and 'owner' in nodes[last]['original']
+                        and nodes[last]['original']['owner'] == 'runtimeverification'
+                    ):
+                        inputs[key_input] = {'follows': path}
+
+            return {key: {'repo': repo, 'rev': rev, 'inputs': inputs}}
+
+    elif override:
+        if 'inputs' not in nodes[key]:
+            return {}
+        else:
+            inputs = {}
+            for key_input, path in nodes[key]['inputs'].items():
+                if type(path) != list:
+                    inputs = inputs | process_input(nodes, path)
+                else:
+                    last = path[-1]
+                    if (
+                        'original' in nodes[last]
+                        and 'owner' in nodes[last]['original']
+                        and nodes[last]['original']['owner'] == 'runtimeverification'
+                    ):
+                        inputs[key_input] = {'follows': path}
+            return {key: {'inputs': inputs}}
+    else:
+        return {}
+
+
+def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePackage]) -> dict:
+    try:
+        result = nix(['flake', 'metadata', f'github:runtimeverification/{package.repo}', '--json'])
+    except Exception:
+        return {}
+    meta = json.loads(result)
+    root = meta['locks']['root']
+
+    return {name: process_input(meta['locks']['nodes'], root, True)[root]}
+
+
+def print_package_tree(inputs: dict, key: str, root: Any = None) -> None:
+    rev = f" (rev {inputs[key]['rev'][:7]})" if 'rev' in inputs[key] else ''
+    follows = (' - follows ' + '/'.join(inputs[key]['follows'])) if 'follows' in inputs[key] else ''
+    if root is None:
+        n = Node(f'{key} ')
+    else:
+        n = Node(f' {key}{rev}{follows} ', root)
+    if 'inputs' in inputs[key]:
+        for k in inputs[key]['inputs'].keys():
+            print_package_tree(inputs[key]['inputs'], k, n)
+
+    if root is None:
+        print_tree(n)
+
+
+# Computes all proper paths and "follows" paths.
+# When the user calls `kup shell <package> --override <path> ...`,
+# we most likely want the `<path>`` to be a proper path and not a follows path.
+# We should emit a warning only however, since the user may know better and
+# only wants to override the follow path
+def flatten_inputs_paths(inputs: dict) -> Tuple[List[Tuple[List[str], str]], List[Tuple[List[str], List[str]]]]:
+    flattened_proper = []
+    flattened_follow = []
+    for k in inputs.keys():
+        if 'follows' in inputs[k]:
+            flattened_follow.append(([k], inputs[k]['follows']))
+        elif 'inputs' in inputs[k]:
+            flattened_proper_k, flattened_follow_k = flatten_inputs_paths(inputs[k]['inputs'])
+            flattened_proper.extend(
+                [([k] + path, repo) for path, repo in flattened_proper_k]
+                if len(flattened_proper_k) > 0
+                else [([k], inputs[k]['repo'])]
+            )
+            flattened_follow.extend([([k] + path, proper_path) for path, proper_path in flattened_follow_k])
+    return flattened_proper, flattened_follow
 
 
 def reload_packages() -> None:
@@ -137,7 +239,12 @@ def reload_packages() -> None:
                     len(m['originalUrl'].removeprefix(f'github:runtimeverification/{available_package.repo}')) > 1
                 )
                 packages[name] = ConcretePackage(
-                    available_package.repo, available_package.package, status, version, immutable, idx
+                    available_package.repo,
+                    available_package.package,
+                    status,
+                    version,
+                    immutable,
+                    idx,
                 )
             else:
                 packages[name] = ConcretePackage(available_package.repo, available_package.package, LOCAL, index=idx)
@@ -166,7 +273,7 @@ def highlight_row(condition: bool, xs: List[str]) -> List[str]:
         return xs
 
 
-def list_package(package_name: str) -> None:
+def list_package(package_name: str, show_inputs: bool) -> None:
     reload_packages()
     if package_name != 'all':
         if package_name not in available_packages.keys():
@@ -177,31 +284,35 @@ def list_package(package_name: str) -> None:
             return
         listed_package = available_packages[package_name]
 
-        tags = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/tags')
-        commits = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/commits')
-        tagged_releases = {t['commit']['sha']: t for t in tags.json()}
-        all_releases = [
-            PackageVersion(
-                c['sha'],
-                c['commit']['message'],
-                tagged_releases[c['sha']]['name'] if c['sha'] in tagged_releases else None,
-                c['commit']['committer']['date'],
-            )
-            for c in commits.json()
-            if not c['commit']['message'].startswith("Merge remote-tracking branch 'origin/develop'")
-        ]
+        if show_inputs:
+            inputs = get_package_inputs(package_name, listed_package)
+            print_package_tree(inputs, package_name)
+        else:
+            tags = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/tags')
+            commits = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/commits')
+            tagged_releases = {t['commit']['sha']: t for t in tags.json()}
+            all_releases = [
+                PackageVersion(
+                    c['sha'],
+                    c['commit']['message'],
+                    tagged_releases[c['sha']]['name'] if c['sha'] in tagged_releases else None,
+                    c['commit']['committer']['date'],
+                )
+                for c in commits.json()
+                if not c['commit']['message'].startswith("Merge remote-tracking branch 'origin/develop'")
+            ]
 
-        installed_packages_sha = {p.version for p in packages.values()}
+            installed_packages_sha = {p.version for p in packages.values()}
 
-        table_data = [['Version \033[92m(installed)\033[0m', 'Commit', 'Message']] + [
-            highlight_row(
-                p.sha in installed_packages_sha,
-                [p.tag if p.tag else '', p.sha[:7], textwrap.shorten(p.message, width=50, placeholder='...')],
-            )
-            for p in all_releases
-        ]
-        table = SingleTable(table_data)
-        print(table.table)
+            table_data = [['Version \033[92m(installed)\033[0m', 'Commit', 'Message']] + [
+                highlight_row(
+                    p.sha in installed_packages_sha,
+                    [p.tag if p.tag else '', p.sha[:7], textwrap.shorten(p.message, width=50, placeholder='...')],
+                )
+                for p in all_releases
+            ]
+            table = SingleTable(table_data)
+            print(table.table)
     else:
         table_data = [
             ['Package', 'Installed version', 'Status'],
@@ -210,22 +321,71 @@ def list_package(package_name: str) -> None:
         print(table.table)
 
 
+def mk_path(path: str, version_or_path: Optional[str]) -> str:
+    if version_or_path:
+        if os.path.isdir(version_or_path):
+            return os.path.abspath(version_or_path)
+        else:
+            return path + '/' + version_or_path
+    else:
+        return path
+
+
+def mk_override_args(
+    package_name: str, package: Union[AvailablePackage, ConcretePackage], overrides: List[List[str]]
+) -> List[str]:
+    if not overrides:
+        return []
+    inputs = get_package_inputs(package_name, package)
+    valid_inps, overrides_inps = flatten_inputs_paths(inputs[package_name]['inputs'])
+    valid_inputs = {'/'.join(path): repo for path, repo in valid_inps}
+    overrides_inputs = [('/'.join(i), '/'.join(j)) for (i, j) in overrides_inps]
+
+    nix_overrides = []
+    for [input, version_or_path] in overrides:
+        override_input = next((override for (i, override) in overrides_inputs if i == input), None)
+        if input not in valid_inputs:
+            if override_input:
+                print(
+                    f"⚠️ \033[93mThe input '\033[94m{input}\033[93m' you are trying to override follows '\033[94m{override_input}\033[93m'.\n",
+                    f"You may want to call this command with '\033[94m--override {override_input}\033[93m' instead.\033[0m",
+                )
+            else:
+                print(
+                    f"❗ \033[91m'\033[94m{input}\033[91m' is not a valid input of the package '\033[94m{package_name}\033[91m'.\n",
+                    f"To see the valid inputs, run '\033[94mkup list {package_name} --inputs\033[91m'\033[0m",
+                )
+                sys.exit(1)
+        repo = valid_inputs[input] if not override_input else valid_inputs[override_input]
+        path = mk_path(f'github:runtimeverification/{repo}', version_or_path)
+        nix_overrides.append('--override-input')
+        nix_overrides.append(input)
+        nix_overrides.append(path)
+    # print(nix_overrides)
+    return nix_overrides
+
+
 def update_or_install_package(
-    package: Union[AvailablePackage, ConcretePackage], version: Optional[str], local_path: Optional[str]
+    package_name: str,
+    package: Union[AvailablePackage, ConcretePackage],
+    version: Optional[str],
+    package_overrides: List[List[str]],
 ) -> None:
-    version = '/' + version if version else ''
-    path = f'github:runtimeverification/{package.repo}{version}' if not local_path else local_path
+    path = mk_path(f'github:runtimeverification/{package.repo}', version)
+
     if type(package) is ConcretePackage:
-        if package.immutable or version or local_path:
+        if package.immutable or version or package_overrides:
             nix(['profile', 'remove', str(package.index)])
-            nix(['profile', 'install', f'{path}#{package.package}'])
+            overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
+            nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
         else:
             nix(['profile', 'upgrade', str(package.index)])
     else:
-        nix(['profile', 'install', f'{path}#{package.package}'])
+        overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
+        nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
 
 
-def install_package(package_name: str, package_version: Optional[str], local_path: Optional[str]) -> None:
+def install_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
         print(
@@ -233,7 +393,7 @@ def install_package(package_name: str, package_version: Optional[str], local_pat
             "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
         )
         return
-    if package_name in installed_packages and not (package_version or local_path):
+    if package_name in installed_packages and not package_version:
         print(
             f"❗ The package '\033[94m{package_name}\033[0m' is already installed.\n"
             "Use '\033[92mkup update {package_name}\033[0m' to update to the latest version."
@@ -241,13 +401,13 @@ def install_package(package_name: str, package_version: Optional[str], local_pat
         return
     if package_name in installed_packages:
         package = packages[package_name]
-        update_or_install_package(package, package_version, local_path)
+        update_or_install_package(package_name, package, package_version, package_overrides)
     else:
         new_package = available_packages[package_name]
-        update_or_install_package(new_package, package_version, local_path)
+        update_or_install_package(package_name, new_package, package_version, package_overrides)
 
 
-def update_package(package_name: str, package_version: Optional[str], local_path: Optional[str]) -> None:
+def update_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
         print(
@@ -258,15 +418,15 @@ def update_package(package_name: str, package_version: Optional[str], local_path
     if package_name not in installed_packages:
         print(
             f"❗ The package '\033[94m{package_name}\033[0m' is not currently installed.\n"
-            "Use '\033[92mkup install {package_name}\033[0m' to install the latest version."
+            f"Use '\033[92mkup install {package_name}\033[0m' to install the latest version."
         )
         return
     package = packages[package_name]
-    if package.status == INSTALLED and not (package_version or local_path):
-        print(f"The package '\033[94m{package_name}\033[0m' is up to date.")
+    if package.status == INSTALLED and not package_version:
+        print(f"The package \'\033[94m{package_name}\033[0m\' is up to date.")
         return
 
-    update_or_install_package(package, package_version, local_path)
+    update_or_install_package(package_name, package, package_version, package_overrides)
 
 
 def remove_package(package_name: str) -> None:
@@ -298,7 +458,7 @@ def remove_package(package_name: str) -> None:
             pass
         else:
             sys.stdout.write("Please respond with '[y]es' or '[n]o'\n")
-            # in case the user selected a wrong opion we want to short-circuit and
+            # in case the user selected a wrong option we want to short-circuit and
             # not try to remove kup twice
             return remove_package(package_name)
     package = packages[package_name]
@@ -310,11 +470,12 @@ def main() -> None:
     subparser = parser.add_subparsers(dest='command')
     list = subparser.add_parser('list', help='Show the active and installed K semantics')
     list.add_argument('package', nargs='?', default='all', type=str)
+    list.add_argument('--inputs', action=BooleanOptionalAction)
 
     install = subparser.add_parser('install', help='Download and install the stated package')
     install.add_argument('package', type=str)
     install.add_argument('--version', type=str)
-    install.add_argument('--local', type=str)
+    install.add_argument('--override', type=str, nargs=2, action='append')
 
     uninstall = subparser.add_parser('remove', help="Remove the given package from the user's PATH")
     uninstall.add_argument('package', type=str)
@@ -322,21 +483,21 @@ def main() -> None:
     update = subparser.add_parser('update', help='Update the package to the latest version')
     update.add_argument('package', type=str)
     update.add_argument('--version', type=str)
-    update.add_argument('--local', type=str)
+    update.add_argument('--override', type=str, nargs=2, action='append')
 
     shell = subparser.add_parser('shell', help='Add the selected package to the current shell (temporary)')
     shell.add_argument('package', type=str)
     shell.add_argument('--version', type=str)
-    shell.add_argument('--local', type=str)
+    shell.add_argument('--override', type=str, nargs=2, action='append')
 
     args = parser.parse_args()
 
     if args.command == 'list':
-        list_package(args.package)
+        list_package(args.package, args.inputs)
     elif args.command == 'install':
-        install_package(args.package, args.version, args.local)
+        install_package(args.package, args.version, args.override)
     elif args.command == 'update':
-        update_package(args.package, args.version, args.local)
+        update_package(args.package, args.version, args.override)
     elif args.command == 'remove':
         remove_package(args.package)
     elif args.command == 'shell':
@@ -348,9 +509,9 @@ def main() -> None:
             )
             return
         temporary_package = available_packages[args.package]
-        version = '/' + args.version if args.version else ''
-        path = f'github:runtimeverification/{temporary_package.repo}{version}' if not args.local else args.local
-        nix_detach(['shell', f'{path}#{temporary_package.package}'])
+        path = mk_path(f'github:runtimeverification/{temporary_package.repo}', args.version)
+        overrides = mk_override_args(args.package, temporary_package, args.override)
+        nix_detach(['shell', f'{path}#{temporary_package.package}'] + overrides)
 
 
 if __name__ == '__main__':
