@@ -3,23 +3,21 @@ import os
 import subprocess
 import sys
 import textwrap
-from argparse import ArgumentParser, RawDescriptionHelpFormatter, _HelpAction
+from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
-from terminaltables import SingleTable  # type: ignore
+import rich
 from rich.console import Console
 from rich.markdown import Markdown
-from rich.tree import Tree
 from rich.theme import Theme
-import rich
+from rich.tree import Tree
+from terminaltables import SingleTable  # type: ignore
 
-console = Console(theme=Theme({
-    'markdown.code': 'green'
-    }))
+console = Console(theme=Theme({'markdown.code': 'green'}))
 
-script_path = os.path.abspath(__file__) # i.e. /path/to/dir/foobar.py
-script_dir = os.path.split(script_path)[0] #i.e. /path/to/dir/
+script_path = os.path.abspath(__file__)  # i.e. /path/to/dir/foobar.py
+script_dir = os.path.split(script_path)[0]  # i.e. /path/to/dir/
 
 INSTALLED = '🟢 \033[92minstalled\033[0m'
 AVAILABLE = '🔵 \033[94mavailable\033[0m'
@@ -189,10 +187,14 @@ def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePacka
 
 
 def print_package_tree(inputs: dict, key: str, root: Any = None) -> None:
-    rev = f" - github:runtimeverification/{inputs[key]['repo']} [green]{inputs[key]['rev'][:7]}[/]" if 'rev' in inputs[key] else ''
+    rev = (
+        f" - github:runtimeverification/{inputs[key]['repo']} [green]{inputs[key]['rev'][:7]}[/]"
+        if 'rev' in inputs[key]
+        else ''
+    )
     follows = (' - follows [green]' + '/'.join(inputs[key]['follows'])) if 'follows' in inputs[key] else ''
     if root is None:
-        n = Tree(f'Inputs:')
+        n = Tree('Inputs:')
     else:
         n = Tree(f'{key}{rev}{follows}')
         root.add(n)
@@ -457,7 +459,7 @@ def remove_package(package_name: str) -> None:
         rich.print(
             "⚠️ [yellow]You are about to remove '[green]kup[/]' "
             'with other K framework packages still installed.\n'
-            '[/]Are you sure you want to continue? \[y/N]'
+            '[/]Are you sure you want to continue? \[y/N]'  # noqa: W605
         )
 
         yes = {'yes', 'y', 'ye', ''}
@@ -476,38 +478,56 @@ def remove_package(package_name: str) -> None:
     package = packages[package_name]
     nix(['profile', 'remove', str(package.index)])
 
-def print_help(subcommand: str, parser) -> None:
+
+def print_help(subcommand: str, parser: ArgumentParser) -> None:
     parser.print_help()
     print('')
     with open(os.path.join(script_dir, f'{subcommand}-help.md'), 'r') as help_file:
         console.print(Markdown(help_file.read(), code_theme='emacs'))
     parser.exit()
 
+
 class _HelpListAction(_HelpAction):
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
         print_help('list', parser)
 
+
 class _HelpInstallAction(_HelpAction):
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
         print_help('install', parser)
 
+
 class _HelpUpdateAction(_HelpAction):
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
         print_help('update', parser)
 
+
 class _HelpShellAction(_HelpAction):
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
         print_help('shell', parser)
 
+
 def main() -> None:
-    parser = ArgumentParser(description='The K Framework installer',
-    prog='kup',
-    formatter_class=RawDescriptionHelpFormatter,
-      epilog=textwrap.dedent('''\
+    parser = ArgumentParser(
+        description='The K Framework installer',
+        prog='kup',
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent(
+            """\
          additional information:
              For more detailed help for the different sub-commands, call
                kup {list,install,remove,update,shell} --help
-         '''))
+         """
+        ),
+    )
     subparser = parser.add_subparsers(dest='command')
     list = subparser.add_parser('list', help='show the active and installed K semantics', add_help=False)
     list.add_argument('package', nargs='?', default='all', type=str)
@@ -517,7 +537,9 @@ def main() -> None:
     install = subparser.add_parser('install', help='download and install the stated package', add_help=False)
     install.add_argument('package', type=str)
     install.add_argument('--version', type=str, help='install a custom version of a package')
-    install.add_argument('--override', type=str, nargs=2, action='append', help='override an input dependency of a package')
+    install.add_argument(
+        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
 
     uninstall = subparser.add_parser('remove', help="remove the given package from the user's PATH")
@@ -526,13 +548,19 @@ def main() -> None:
     update = subparser.add_parser('update', help='update the package to the latest version', add_help=False)
     update.add_argument('package', type=str)
     update.add_argument('--version', type=str, help='update the package to a custom version')
-    update.add_argument('--override', type=str, nargs=2, action='append', help='override an input dependency of a package')
+    update.add_argument(
+        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    )
     update.add_argument('-h', '--help', action=_HelpUpdateAction)
 
-    shell = subparser.add_parser('shell', help='add the selected package to the current shell (temporary)', add_help=False)
+    shell = subparser.add_parser(
+        'shell', help='add the selected package to the current shell (temporary)', add_help=False
+    )
     shell.add_argument('package', type=str)
     shell.add_argument('--version', type=str, help='temporarily install a custom version of a package')
-    shell.add_argument('--override', type=str, nargs=2, action='append', help='override an input dependency of a package')
+    shell.add_argument(
+        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
 
     args = parser.parse_args()
