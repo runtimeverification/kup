@@ -28,6 +28,7 @@ jobs:
         with:
           name: runtimeverification
           signingKey: '${{ secrets.RV_DEVOPS_CACHIX_TOKEN }}'
+          skipPush: true
       - uses: actions/setup-python@v4
         with:
           python-version: '3.9' 
