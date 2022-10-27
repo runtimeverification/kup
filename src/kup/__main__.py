@@ -479,7 +479,7 @@ def remove_package(package_name: str) -> None:
 def print_help(subcommand: str, parser) -> None:
     parser.print_help()
     print('')
-    with open(os.path.join(script_dir, f'{subcommand}-help.md'), 'r+') as help_file:
+    with open(os.path.join(script_dir, f'{subcommand}-help.md'), 'r') as help_file:
         console.print(Markdown(help_file.read(), code_theme='emacs'))
     parser.exit()
 
