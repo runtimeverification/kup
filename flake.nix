@@ -5,41 +5,19 @@
     flake-utils.url = "github:numtide/flake-utils";
     poetry2nix.url = "github:nix-community/poetry2nix";
   };
-
   outputs = { self, nixpkgs, flake-utils, poetry2nix }:
     let
       allOverlays = [
         poetry2nix.overlay
-        (final: prev:
-          let
-            kup-version =
-              prev.lib.removeSuffix "\n" (builtins.readFile ./package/version);
-            src = prev.stdenv.mkDerivation {
-              name = "kup-${kup-version}-${self.rev or "dirty"}-src";
-              src = prev.lib.cleanSource
-                (prev.nix-gitignore.gitignoreSourcePure [
-                  ./.gitignore
-                  ".github/"
-                  "result*"
-                  "nix/"
-                  "*.nix"
-                ] ./.);
-              dontBuild = true;
-              installPhase = ''
-                mkdir $out
-                cp -rv $src/* $out
-                chmod -R u+w $out
-              '';
-            };
-          in {
-            kup = prev.poetry2nix.mkPoetryApplication {
-              python = prev.python39;
-              projectDir = ./.;
-              groups = [];
-              # We remove `"dev"` from `checkGroups`, so that poetry2nix does not try to resolve dev dependencies.
-              checkGroups = [];
-            };
-          })
+        (final: prev: {
+          kup = prev.poetry2nix.mkPoetryApplication {
+            python = prev.python39;
+            projectDir = ./.;
+            groups = [];
+            # We remove `"dev"` from `checkGroups`, so that poetry2nix does not try to resolve dev dependencies.
+            checkGroups = [];
+           };
+        })
       ];
     in flake-utils.lib.eachSystem [
       "x86_64-linux"
@@ -50,15 +28,10 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-
-          # Temporarily required until a bug on pyOpenSSL is resolved for aarch64-darwin
-          # https://github.com/NixOS/nixpkgs/pull/172397
-          config.allowBroken = system == "aarch64-darwin";
           overlays = allOverlays;
         };
       in rec {
-
-        packages = rec {
+        packages = {
           inherit (pkgs) kup;
         };
         defaultPackage = packages.kup;
