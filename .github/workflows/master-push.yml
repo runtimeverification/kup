@@ -2,7 +2,7 @@ name: 'Master Push'
 on:
   push:
     branches:
-      - nix-package
+      - master
 
 jobs:
   nix-flake-release:
