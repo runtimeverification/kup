@@ -27,7 +27,7 @@ jobs:
       - uses: cachix/cachix-action@v10
         with:
           name: runtimeverification
-          signingKey: '${{ secrets.CACHIX_SIGNING_KEY }}'
+          signingKey: '${{ secrets.RV_DEVOPS_CACHIX_TOKEN }}'
       - uses: actions/setup-python@v4
         with:
           python-version: '3.9' 
@@ -39,3 +39,5 @@ jobs:
         run: make
       - name: 'Kup list works'
         run: poetry run kup list
+      - name: 'Build via Nix'
+        run: nix build
