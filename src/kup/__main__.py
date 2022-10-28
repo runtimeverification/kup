@@ -87,6 +87,7 @@ class AvailablePackage:
 available_packages: Dict[str, AvailablePackage] = {
     'kup': AvailablePackage('kup', f'packages.{SYSTEM}.kup'),
     'k': AvailablePackage('k', f'packages.{SYSTEM}.k'),
+    'kavm': AvailablePackage('avm-semantics', f'packages.{SYSTEM}.kavm'),
     'kevm': AvailablePackage('evm-semantics', f'packages.{SYSTEM}.kevm'),
     'kore-exec': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-exec'),
     'pyk': AvailablePackage('pyk', f'packages.{SYSTEM}.pyk'),
