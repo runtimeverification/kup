@@ -1,12 +1,12 @@
-# kup - the K framework installer
+# kup - the K Framework installer
 
-`kup` is the new installer tool for downloading and running the latest K-Framework and any semantics built on top of K. This tool uses the [Nix](https://nixos.org/download.html) package manager as a backbone and is currently supported on all major x86_64 Linux distributions, as well as Intel and ARM macOS. If you're on a compatible system, use this one click install script which installs [Nix](https://nixos.org/download.html) (if not already present) and `kup`:
+`kup` is the new installer tool for downloading and running the latest version of K Framework and any semantics built on top of K. This tool uses the [Nix](https://nixos.org/download.html) package manager as a backbone and is currently supported on all major x86_64 Linux distributions, as well as Intel and ARM macOS. If you're on a compatible system, use this one click install script which installs [Nix](https://nixos.org/download.html) (if not already present) and `kup`:
 
 ```
 bash <(curl https://kframework.org/install)
 ```
 
-You can then install the K-Framework via:
+You can then install K Framework via:
 
 ```
 kup install k
