@@ -1,14 +1,44 @@
-# kup
+# kup - the K Framework installer
 
+`kup` is the new installer tool for downloading and running the latest version of K Framework and any semantics built on top of K. This tool uses the [Nix](https://nixos.org/download.html) package manager as a backbone and is currently supported on all major x86_64 Linux distributions, as well as Intel and ARM macOS. If you're on a compatible system, use this one click install script which installs [Nix](https://nixos.org/download.html) (if not already present) and `kup`:
 
-## Installation
-
-Prerequsites: `python 3.8.*`, `pip >= 20.0.2`, `poetry >= 1.2.0`.
-
-```bash
-make build
-pip install dist/*.whl
 ```
+bash <(curl https://kframework.org/install)
+```
+
+You can then install K Framework via:
+
+```
+kup install k
+```
+
+update K with:
+
+```
+kup update k
+```
+
+And list available versions with:
+
+```
+kup list k
+```
+
+To list further available packages, run
+
+```
+kup list
+```
+
+and any further functionality is described in the help commands:
+
+```
+kup --help
+kup list --help
+kup install --help
+etc.
+```
+
 
 
 ## For Developers

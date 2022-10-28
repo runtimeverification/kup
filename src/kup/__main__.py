@@ -3,12 +3,21 @@ import os
 import subprocess
 import sys
 import textwrap
-from argparse import ArgumentParser, BooleanOptionalAction
+from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
-from pptree import Node, print_tree
+import rich
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.theme import Theme
+from rich.tree import Tree
 from terminaltables import SingleTable  # type: ignore
+
+console = Console(theme=Theme({'markdown.code': 'green'}))
+
+script_path = os.path.abspath(__file__)  # i.e. /path/to/dir/foobar.py
+script_dir = os.path.split(script_path)[0]  # i.e. /path/to/dir/
 
 INSTALLED = '🟢 \033[92minstalled\033[0m'
 AVAILABLE = '🔵 \033[94mavailable\033[0m'
@@ -178,18 +187,23 @@ def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePacka
 
 
 def print_package_tree(inputs: dict, key: str, root: Any = None) -> None:
-    rev = f" (rev {inputs[key]['rev'][:7]})" if 'rev' in inputs[key] else ''
-    follows = (' - follows ' + '/'.join(inputs[key]['follows'])) if 'follows' in inputs[key] else ''
+    rev = (
+        f" - github:runtimeverification/{inputs[key]['repo']} [green]{inputs[key]['rev'][:7]}[/]"
+        if 'rev' in inputs[key]
+        else ''
+    )
+    follows = (' - follows [green]' + '/'.join(inputs[key]['follows'])) if 'follows' in inputs[key] else ''
     if root is None:
-        n = Node(f'{key} ')
+        n = Tree('Inputs:')
     else:
-        n = Node(f' {key}{rev}{follows} ', root)
+        n = Tree(f'{key}{rev}{follows}')
+        root.add(n)
     if 'inputs' in inputs[key]:
         for k in inputs[key]['inputs'].keys():
             print_package_tree(inputs[key]['inputs'], k, n)
 
     if root is None:
-        print_tree(n)
+        rich.print(n)
 
 
 # Computes all proper paths and "follows" paths.
@@ -278,8 +292,8 @@ def list_package(package_name: str, show_inputs: bool) -> None:
     if package_name != 'all':
         if package_name not in available_packages.keys():
             print(
-                f"❗ The package '\033[94m{package_name}\033[0m' does not exist.\n"
-                "Use '\033[92mkup list\033[0m' to see all the available packages."
+                f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
+                "[/]Use '[blue]kup list[/]' to see all the available packages."
             )
             return
         listed_package = available_packages[package_name]
@@ -346,14 +360,14 @@ def mk_override_args(
         override_input = next((override for (i, override) in overrides_inputs if i == input), None)
         if input not in valid_inputs:
             if override_input:
-                print(
-                    f"⚠️ \033[93mThe input '\033[94m{input}\033[93m' you are trying to override follows '\033[94m{override_input}\033[93m'.\n",
-                    f"You may want to call this command with '\033[94m--override {override_input}\033[93m' instead.\033[0m",
+                rich.print(
+                    f"⚠️ [yellow]The input '[green]{input}[/]' you are trying to override follows '[green]{override_input}[/]'.\n",
+                    f"[/]You may want to call this command with '[blue]--override {override_input}[/]' instead.",
                 )
             else:
-                print(
-                    f"❗ \033[91m'\033[94m{input}\033[91m' is not a valid input of the package '\033[94m{package_name}\033[91m'.\n",
-                    f"To see the valid inputs, run '\033[94mkup list {package_name} --inputs\033[91m'\033[0m",
+                rich.print(
+                    f"❗ [red]'[green]{input}[/]' is not a valid input of the package '[green]{package_name}[/]'.\n",
+                    f"[/]To see the valid inputs, run '[blue]kup list {package_name} --inputs[/]'",
                 )
                 sys.exit(1)
         repo = valid_inputs[input] if not override_input else valid_inputs[override_input]
@@ -388,15 +402,15 @@ def update_or_install_package(
 def install_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
-        print(
-            f"❗ \033[91mThe package '\033[94m{package_name}\033[91m' does not exist.\n"
-            "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
+            "[/]Use '[blue]kup list[/]' to see all the available packages."
         )
         return
     if package_name in installed_packages and not package_version:
-        print(
-            f"❗ The package '\033[94m{package_name}\033[0m' is already installed.\n"
-            "Use '\033[92mkup update {package_name}\033[0m' to update to the latest version."
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' is already installed.\n"
+            f"[/]Use '[blue]kup update {package_name}[/]' to update to the latest version."
         )
         return
     if package_name in installed_packages:
@@ -410,20 +424,20 @@ def install_package(package_name: str, package_version: Optional[str], package_o
 def update_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
-        print(
-            f"❗ \033[91mThe package '\033[94m{package_name}\033[91m' does not exist.\n"
-            "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
+            "[/]Use '[blue]kup list[/]' to see all the available packages."
         )
         return
     if package_name not in installed_packages:
-        print(
-            f"❗ The package '\033[94m{package_name}\033[0m' is not currently installed.\n"
-            f"Use '\033[92mkup install {package_name}\033[0m' to install the latest version."
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' is not currently installed.\n"
+            f"[/]Use '[blue]kup install {package_name}[/]' to install the latest version."
         )
         return
     package = packages[package_name]
     if package.status == INSTALLED and not package_version:
-        print(f"The package \'\033[94m{package_name}\033[0m\' is up to date.")
+        rich.print(f"The package '[green]{package_name}[/]' is up to date.")
         return
 
     update_or_install_package(package_name, package, package_version, package_overrides)
@@ -432,20 +446,20 @@ def update_package(package_name: str, package_version: Optional[str], package_ov
 def remove_package(package_name: str) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
-        print(
-            f"❗ \033[91mThe package '\033[94m{package_name}\033[91m' does not exist.\n"
-            "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
+            "[/]Use '[blue]kup list[/]' to see all the available packages."
         )
         return
     if package_name not in installed_packages:
-        print(f"❗ The package '\033[94m{package_name}\033[0m' is not currently installed.")
+        rich.print(f"❗ The package '[green]{package_name}[/]' is not currently installed.")
         return
 
     if package_name == 'kup' and len(installed_packages) > 1:
-        print(
-            "⚠️ \033[93mYou are about to remove '\033[94mkup\033[93m' "
+        rich.print(
+            "⚠️ [yellow]You are about to remove '[green]kup[/]' "
             'with other K framework packages still installed.\n'
-            '\033[0mAre you sure you want to continue? [y/N]'
+            '[/]Are you sure you want to continue? \[y/N]'  # noqa: W605
         )
 
         yes = {'yes', 'y', 'ye', ''}
@@ -465,33 +479,95 @@ def remove_package(package_name: str) -> None:
     nix(['profile', 'remove', str(package.index)])
 
 
+def print_help(subcommand: str, parser: ArgumentParser) -> None:
+    parser.print_help()
+    print('')
+    with open(os.path.join(script_dir, f'{subcommand}-help.md'), 'r') as help_file:
+        console.print(Markdown(help_file.read(), code_theme='emacs'))
+    parser.exit()
+
+
+class _HelpListAction(_HelpAction):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
+        print_help('list', parser)
+
+
+class _HelpInstallAction(_HelpAction):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
+        print_help('install', parser)
+
+
+class _HelpUpdateAction(_HelpAction):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
+        print_help('update', parser)
+
+
+class _HelpShellAction(_HelpAction):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
+        print_help('shell', parser)
+
+
 def main() -> None:
-    parser = ArgumentParser(description='The K Framework installer')
+    parser = ArgumentParser(
+        description='The K Framework installer',
+        prog='kup',
+        formatter_class=RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent(
+            """\
+         additional information:
+             For more detailed help for the different sub-commands, call
+               kup {list,install,remove,update,shell} --help
+         """
+        ),
+    )
     subparser = parser.add_subparsers(dest='command')
-    list = subparser.add_parser('list', help='Show the active and installed K semantics')
+    list = subparser.add_parser('list', help='show the active and installed K semantics', add_help=False)
     list.add_argument('package', nargs='?', default='all', type=str)
-    list.add_argument('--inputs', action=BooleanOptionalAction)
+    list.add_argument('--inputs', action='store_true', help='show the input dependencies of the selected package')
+    list.add_argument('-h', '--help', action=_HelpListAction)
 
-    install = subparser.add_parser('install', help='Download and install the stated package')
+    install = subparser.add_parser('install', help='download and install the stated package', add_help=False)
     install.add_argument('package', type=str)
-    install.add_argument('--version', type=str)
-    install.add_argument('--override', type=str, nargs=2, action='append')
+    install.add_argument('--version', type=str, help='install a custom version of a package')
+    install.add_argument(
+        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    )
+    install.add_argument('-h', '--help', action=_HelpInstallAction)
 
-    uninstall = subparser.add_parser('remove', help="Remove the given package from the user's PATH")
+    uninstall = subparser.add_parser('remove', help="remove the given package from the user's PATH")
     uninstall.add_argument('package', type=str)
 
-    update = subparser.add_parser('update', help='Update the package to the latest version')
+    update = subparser.add_parser('update', help='update the package to the latest version', add_help=False)
     update.add_argument('package', type=str)
-    update.add_argument('--version', type=str)
-    update.add_argument('--override', type=str, nargs=2, action='append')
+    update.add_argument('--version', type=str, help='update the package to a custom version')
+    update.add_argument(
+        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    )
+    update.add_argument('-h', '--help', action=_HelpUpdateAction)
 
-    shell = subparser.add_parser('shell', help='Add the selected package to the current shell (temporary)')
+    shell = subparser.add_parser(
+        'shell', help='add the selected package to the current shell (temporary)', add_help=False
+    )
     shell.add_argument('package', type=str)
-    shell.add_argument('--version', type=str)
-    shell.add_argument('--override', type=str, nargs=2, action='append')
+    shell.add_argument('--version', type=str, help='temporarily install a custom version of a package')
+    shell.add_argument(
+        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    )
+    shell.add_argument('-h', '--help', action=_HelpShellAction)
 
     args = parser.parse_args()
-
+    if 'help' in args and args.help:
+        with open(os.path.join(script_dir, f'{args.command}-help.md'), 'r+') as help_file:
+            console.print(Markdown(help_file.read(), code_theme='emacs'))
+            sys.exit(0)
     if args.command == 'list':
         list_package(args.package, args.inputs)
     elif args.command == 'install':
@@ -503,9 +579,9 @@ def main() -> None:
     elif args.command == 'shell':
         reload_packages()
         if args.package not in available_packages.keys():
-            print(
-                f"❗ \033[91mThe package '\033[94m{args.package}\033[91m' does not exist.\n"
-                "\033[0mUse '\033[92mkup list\033[0m' to see all the available packages."
+            rich.print(
+                f"❗ [red]The package '[green]{args.package}[/]' does not exist.\n"
+                "[/]Use '[blue]kup list[/]' to see all the available packages."
             )
             return
         temporary_package = available_packages[args.package]
