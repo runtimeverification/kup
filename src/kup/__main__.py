@@ -362,13 +362,13 @@ def mk_override_args(
         if input not in valid_inputs:
             if override_input:
                 rich.print(
-                    f"⚠️ [yellow]The input '[green]{input}[/]' you are trying to override follows '[green]{override_input}[/]'.\n",
-                    f"[/]You may want to call this command with '[blue]--override {override_input}[/]' instead.",
+                    f"⚠️ [yellow]The input '[green]{input}[/]' you are trying to override follows '[green]{override_input}[/]'.\n"
+                    f"[/]You may want to call this command with '[blue]--override {override_input}[/]' instead."
                 )
             else:
                 rich.print(
-                    f"❗ [red]'[green]{input}[/]' is not a valid input of the package '[green]{package_name}[/]'.\n",
-                    f"[/]To see the valid inputs, run '[blue]kup list {package_name} --inputs[/]'",
+                    f"❗ [red]'[green]{input}[/]' is not a valid input of the package '[green]{package_name}[/]'.\n"
+                    f"[/]To see the valid inputs, run '[blue]kup list {package_name} --inputs[/]'"
                 )
                 sys.exit(1)
         repo = valid_inputs[input] if not override_input else valid_inputs[override_input]
@@ -376,7 +376,6 @@ def mk_override_args(
         nix_overrides.append('--override-input')
         nix_overrides.append(input)
         nix_overrides.append(path)
-    # print(nix_overrides)
     return nix_overrides
 
 
