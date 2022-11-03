@@ -90,6 +90,7 @@ available_packages: Dict[str, AvailablePackage] = {
     'kavm': AvailablePackage('avm-semantics', f'packages.{SYSTEM}.kavm'),
     'kevm': AvailablePackage('evm-semantics', f'packages.{SYSTEM}.kevm'),
     'kore-exec': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-exec'),
+    'kore-rpc': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-rpc'),
     'pyk': AvailablePackage('pyk', f'packages.{SYSTEM}.pyk'),
 }
 
