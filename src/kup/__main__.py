@@ -61,13 +61,15 @@ SYSTEM = (
     .replace('"', '')
 )
 
+TRUSTED_USERS = []
+
 
 def check_substituters() -> Tuple[bool, bool]:
     global TRUSTED_USERS
     try:
         result = nix_raw(['show-config', '--json'], extra_flags=[])
     except Exception:
-        rich.print(f"❗ [red]Internal error. Could not run 'nix show-config'.")
+        rich.print("❗ [red]Internal error. Could not run 'nix show-config'.")
         sys.exit(1)
     config = json.loads(result)
     TRUSTED_USERS = config['trusted-users']['value']
@@ -84,27 +86,32 @@ def check_substituters() -> Tuple[bool, bool]:
 
 IS_TRUSTED_USER, CONTAINS_SUBSTITUTERS = check_substituters()
 
+
+def print_substituters_warning() -> None:
+    add_user_to_trusted = ' '.join([f'"{s}"' for s in TRUSTED_USERS + [USER]])
+    rich.print(
+        '⚠️ [yellow] The current user does not have sufficient permissions to configure nix binary caches,\n'
+        'which [blue]kup[/] relies on, to provide faster installation using pre-built binaries.[/]\n'
+        'To avoid building the selected package on your local machine, you can either:\n\n'
+        'a) Add the following line to your nix configuration file, to add this user as trusted and then try again:\n\n'
+        f'   [green]nix.trustedUsers = [ {add_user_to_trusted} ];[/]\n\n\n'
+        '   You are most likely to find your nix configuration file in the following place:\n\n'
+        '   The system-wide configuration file [green]sysconfdir/nix/nix.conf[/] (i.e. [green]/etc/nix/nix.conf[/] on most systems),\n'
+        '   or [green]$NIX_CONF_DIR/nix.conf[/] if [green]NIX_CONF_DIR[/] is set.\n\n'
+        '   Nix will also look for [green]nix/nix.conf[/] files in [green]XDG_CONFIG_DIRS[/] and [green]XDG_CONFIG_HOME[/].\n'
+        '   If unset, [green]XDG_CONFIG_DIRS[/] defaults to [green]/etc/xdg[/], and [green]XDG_CONFIG_HOME[/] defaults to [green]$HOME/.config[/]\n'
+        '   as per XDG Base Directory Specification.\n\n'
+        'b) Re-run this command as root. ([red]not recommended[/])\n\n'
+    )
+
+
 # nix tends to fail on macs with a segfault so we add `GC_DONT_GC=1` if on macOS (i.e. darwin)
 # The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
-def nix(args: List[str], is_install=True) -> bytes:
-    add_user_to_trusted = ' '.join([f'"{s}"' for s in TRUSTED_USERS + [USER]])
+def nix(args: List[str], is_install: bool = True) -> bytes:
     if is_install and not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
-        rich.print(
-            '⚠️ [yellow] The current user does not have sufficient permissions to configure nix binary caches,\n'
-            'which [blue]kup[/] relies on, to provide faster installation using pre-built binaries.[/]\n'
-            'To avoid building the selected package on your local machine, you can either:\n\n'
-            'a) Add the following line to your nix configuration file, to add this user as trusted and then try again:\n\n'
-            f'   [green]nix.trustedUsers = [ {add_user_to_trusted} ];[/]\n\n\n'
-            '   You are most likely to find your nix configuration file in the following place:\n\n'
-            '   The system-wide configuration file [green]sysconfdir/nix/nix.conf[/] (i.e. [green]/etc/nix/nix.conf[/] on most systems),\n'
-            '   or [green]$NIX_CONF_DIR/nix.conf[/] if [green]NIX_CONF_DIR[/] is set.\n\n'
-            '   Nix will also look for [green]nix/nix.conf[/] files in [green]XDG_CONFIG_DIRS[/] and [green]XDG_CONFIG_HOME[/].\n'
-            '   If unset, [green]XDG_CONFIG_DIRS[/] defaults to [green]/etc/xdg[/], and [green]XDG_CONFIG_HOME[/] defaults to [green]$HOME/.config[/]\n'
-            '   as per XDG Base Directory Specification.\n\n'
-            'b) Re-run this command as root. ([red]not recommended[/])\n\n'
-        )
+        print_substituters_warning()
     return nix_raw(
         args,
         NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS else [],
@@ -112,11 +119,14 @@ def nix(args: List[str], is_install=True) -> bytes:
     )
 
 
-def nix_detach(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS) -> None:
+def nix_detach(args: List[str]) -> None:
     my_env = os.environ.copy()
     if 'darwin' in SYSTEM:
         my_env['GC_DONT_GC'] = '1'
     nix = subprocess.check_output(['which', 'nix']).decode('utf8').strip()
+    if not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
+        print_substituters_warning()
+    extra_flags = NIX_SUBSTITUTERS if not CONTAINS_SUBSTITUTERS else []
     os.execve(nix, [nix] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags, my_env)
 
 
@@ -610,7 +620,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if 'help' in args and args.help:
-        with open(os.path.join(script_dir, f'{args.command}-help.md'), 'r+') as help_file:
+        with open(os.path.join(SCRIPT_DIR, f'{args.command}-help.md'), 'r+') as help_file:
             console.print(Markdown(help_file.read(), code_theme='emacs'))
             sys.exit(0)
     if args.command == 'list':
