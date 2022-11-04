@@ -17,7 +17,7 @@ from terminaltables import SingleTable  # type: ignore
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
-SCRIPT_DIR = os.path.split(os.path.abspath(__file__))[0]  # i.e. /path/to/dir/
+KUP_DIR = os.path.split(os.path.abspath(__file__))[0]  # i.e. /path/to/dir/
 USER = pwd.getpwuid(os.getuid())[0]
 
 INSTALLED = '🟢 \033[92minstalled\033[0m'
@@ -105,7 +105,8 @@ def print_substituters_warning() -> None:
         '   Nix will also look for [green]nix/nix.conf[/] files in [green]XDG_CONFIG_DIRS[/] and [green]XDG_CONFIG_HOME[/].\n'
         '   If unset, [green]XDG_CONFIG_DIRS[/] defaults to [green]/etc/xdg[/], and [green]XDG_CONFIG_HOME[/] defaults to [green]$HOME/.config[/]\n'
         '   as per XDG Base Directory Specification.\n\n'
-        'b) Re-run this command as root. ([red]not recommended[/])\n\n'
+        'b) Re-run this command as root. [red](not recommended)[/]\n\n\n'
+        'For more information on the nix config file, see: https://nixos.org/manual/nix/stable/command-ref/conf-file.html\n'
     )
 
 
@@ -114,8 +115,8 @@ def print_substituters_warning() -> None:
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
 def nix(args: List[str], is_install: bool = True) -> bytes:
-    if is_install and not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
-        print_substituters_warning()
+    # if is_install and not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
+    print_substituters_warning()
     return nix_raw(
         args,
         NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS and IS_TRUSTED_USER else [],
@@ -541,7 +542,7 @@ def remove_package(package_name: str) -> None:
 def print_help(subcommand: str, parser: ArgumentParser) -> None:
     parser.print_help()
     print('')
-    with open(os.path.join(SCRIPT_DIR, f'{subcommand}-help.md'), 'r') as help_file:
+    with open(os.path.join(KUP_DIR, f'{subcommand}-help.md'), 'r') as help_file:
         console.print(Markdown(help_file.read(), code_theme='emacs'))
     parser.exit()
 
@@ -624,7 +625,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if 'help' in args and args.help:
-        with open(os.path.join(SCRIPT_DIR, f'{args.command}-help.md'), 'r+') as help_file:
+        with open(os.path.join(KUP_DIR, f'{args.command}-help.md'), 'r+') as help_file:
             console.print(Markdown(help_file.read(), code_theme='emacs'))
             sys.exit(0)
     if args.command == 'list':
