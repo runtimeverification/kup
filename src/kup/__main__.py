@@ -69,19 +69,23 @@ def check_substituters() -> Tuple[bool, bool]:
     try:
         result = nix_raw(['show-config', '--json'], extra_flags=[])
     except Exception:
-        rich.print("❗ [red]Internal error. Could not run 'nix show-config'.")
-        sys.exit(1)
+        rich.print("⚠️ [yellow]Could not run 'nix show-config'.")
+        return False, False
     config = json.loads(result)
-    TRUSTED_USERS = config['trusted-users']['value']
-    current_user_is_trusted = True if USER in TRUSTED_USERS else False
-    substituters = config['substituters']['value']
-    has_all_substituters = (
-        True
-        if 'https://k-framework.cachix.org' in substituters
-        and ('https://cache.iog.io' in substituters or 'https://hydra.iohk.io' in substituters)
-        else False
-    )
-    return current_user_is_trusted, has_all_substituters
+    try:
+        TRUSTED_USERS = config['trusted-users']['value']
+        current_user_is_trusted = True if USER in TRUSTED_USERS else False
+        substituters = config['substituters']['value']
+        has_all_substituters = (
+            True
+            if 'https://k-framework.cachix.org' in substituters
+            and ('https://cache.iog.io' in substituters or 'https://hydra.iohk.io' in substituters)
+            else False
+        )
+        return current_user_is_trusted, has_all_substituters
+    except Exception:
+        rich.print('⚠️ [yellow]Could not fetch nix substituters or figure out if the current user is trusted by nix.')
+        return False, False
 
 
 IS_TRUSTED_USER, CONTAINS_SUBSTITUTERS = check_substituters()
