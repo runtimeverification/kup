@@ -114,7 +114,7 @@ def nix(args: List[str], is_install: bool = True) -> bytes:
         print_substituters_warning()
     return nix_raw(
         args,
-        NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS else [],
+        NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS and IS_TRUSTED_USER else [],
         True if 'darwin' in SYSTEM else False,
     )
 
@@ -126,7 +126,7 @@ def nix_detach(args: List[str]) -> None:
     nix = subprocess.check_output(['which', 'nix']).decode('utf8').strip()
     if not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
         print_substituters_warning()
-    extra_flags = NIX_SUBSTITUTERS if not CONTAINS_SUBSTITUTERS else []
+    extra_flags = NIX_SUBSTITUTERS if not CONTAINS_SUBSTITUTERS and IS_TRUSTED_USER else []
     os.execve(nix, [nix] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags, my_env)
 
 
