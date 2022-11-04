@@ -115,8 +115,8 @@ def print_substituters_warning() -> None:
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
 def nix(args: List[str], is_install: bool = True) -> bytes:
-    # if is_install and not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
-    print_substituters_warning()
+    if is_install and not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
+        print_substituters_warning()
     return nix_raw(
         args,
         NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS and IS_TRUSTED_USER else [],
