@@ -1,5 +1,6 @@
 import json
 import os
+import pwd
 import subprocess
 import sys
 import textwrap
@@ -16,8 +17,8 @@ from terminaltables import SingleTable  # type: ignore
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
-script_path = os.path.abspath(__file__)  # i.e. /path/to/dir/foobar.py
-script_dir = os.path.split(script_path)[0]  # i.e. /path/to/dir/
+SCRIPT_DIR = os.path.split(os.path.abspath(__file__))[0]  # i.e. /path/to/dir/
+USER = pwd.getpwuid(os.getuid())[0]
 
 INSTALLED = '🟢 \033[92minstalled\033[0m'
 AVAILABLE = '🔵 \033[94mavailable\033[0m'
@@ -60,12 +61,55 @@ SYSTEM = (
     .replace('"', '')
 )
 
+
+def check_substituters() -> Tuple[bool, bool]:
+    global TRUSTED_USERS
+    try:
+        result = nix_raw(['show-config', '--json'], extra_flags=[])
+    except Exception:
+        rich.print(f"❗ [red]Internal error. Could not run 'nix show-config'.")
+        sys.exit(1)
+    config = json.loads(result)
+    TRUSTED_USERS = config['trusted-users']['value']
+    current_user_is_trusted = True if USER in TRUSTED_USERS else False
+    substituters = config['substituters']['value']
+    has_all_substituters = (
+        True
+        if 'https://k-framework.cachix.org' in substituters
+        and ('https://cache.iog.io' in substituters or 'https://hydra.iohk.io' in substituters)
+        else False
+    )
+    return current_user_is_trusted, has_all_substituters
+
+
+IS_TRUSTED_USER, CONTAINS_SUBSTITUTERS = check_substituters()
+
 # nix tends to fail on macs with a segfault so we add `GC_DONT_GC=1` if on macOS (i.e. darwin)
 # The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
-def nix(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS) -> bytes:
-    return nix_raw(args, extra_flags, True if 'darwin' in SYSTEM else False)
+def nix(args: List[str], is_install=True) -> bytes:
+    add_user_to_trusted = ' '.join([f'"{s}"' for s in TRUSTED_USERS + [USER]])
+    if is_install and not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
+        rich.print(
+            '⚠️ [yellow] The current user does not have sufficient permissions to configure nix binary caches,\n'
+            'which [blue]kup[/] relies on, to provide faster installation using pre-built binaries.[/]\n'
+            'To avoid building the selected package on your local machine, you can either:\n\n'
+            'a) Add the following line to your nix configuration file, to add this user as trusted and then try again:\n\n'
+            f'   [green]nix.trustedUsers = [ {add_user_to_trusted} ];[/]\n\n\n'
+            '   You are most likely to find your nix configuration file in the following place:\n\n'
+            '   The system-wide configuration file [green]sysconfdir/nix/nix.conf[/] (i.e. [green]/etc/nix/nix.conf[/] on most systems),\n'
+            '   or [green]$NIX_CONF_DIR/nix.conf[/] if [green]NIX_CONF_DIR[/] is set.\n\n'
+            '   Nix will also look for [green]nix/nix.conf[/] files in [green]XDG_CONFIG_DIRS[/] and [green]XDG_CONFIG_HOME[/].\n'
+            '   If unset, [green]XDG_CONFIG_DIRS[/] defaults to [green]/etc/xdg[/], and [green]XDG_CONFIG_HOME[/] defaults to [green]$HOME/.config[/]\n'
+            '   as per XDG Base Directory Specification.\n\n'
+            'b) Re-run this command as root. ([red]not recommended[/])\n\n'
+        )
+    return nix_raw(
+        args,
+        NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS else [],
+        True if 'darwin' in SYSTEM else False,
+    )
 
 
 def nix_detach(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS) -> None:
@@ -120,7 +164,7 @@ installed_packages: List[str] = []
 
 
 def check_package_version(p: AvailablePackage, current_url: str) -> str:
-    result = nix(['flake', 'metadata', f'github:runtimeverification/{p.repo}', '--json'])
+    result = nix(['flake', 'metadata', f'github:runtimeverification/{p.repo}', '--json'], is_install=False)
     meta = json.loads(result)
 
     if meta['url'] == current_url:
@@ -179,7 +223,7 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
 
 def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePackage]) -> dict:
     try:
-        result = nix(['flake', 'metadata', f'github:runtimeverification/{package.repo}', '--json'])
+        result = nix(['flake', 'metadata', f'github:runtimeverification/{package.repo}', '--json'], is_install=False)
     except Exception:
         return {}
     meta = json.loads(result)
@@ -390,7 +434,7 @@ def update_or_install_package(
 
     if type(package) is ConcretePackage:
         if package.immutable or version or package_overrides:
-            nix(['profile', 'remove', str(package.index)])
+            nix(['profile', 'remove', str(package.index)], is_install=False)
             overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
             nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
         else:
@@ -477,13 +521,13 @@ def remove_package(package_name: str) -> None:
             # not try to remove kup twice
             return remove_package(package_name)
     package = packages[package_name]
-    nix(['profile', 'remove', str(package.index)])
+    nix(['profile', 'remove', str(package.index)], is_install=False)
 
 
 def print_help(subcommand: str, parser: ArgumentParser) -> None:
     parser.print_help()
     print('')
-    with open(os.path.join(script_dir, f'{subcommand}-help.md'), 'r') as help_file:
+    with open(os.path.join(SCRIPT_DIR, f'{subcommand}-help.md'), 'r') as help_file:
         console.print(Markdown(help_file.read(), code_theme='emacs'))
     parser.exit()
 
