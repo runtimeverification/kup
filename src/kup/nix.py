@@ -200,6 +200,8 @@ def install_substituter_non_nixos(conf_file: str, substituter: str, pub_key: str
 
     if os.path.exists(conf_file):
         subprocess.call(['sudo', 'cp', '-f', conf_file, f'{conf_file}.bak'])
+    else:
+        subprocess.call(['sudo', 'mkdir', '-p', os.path.dirname(conf_file)])
 
     subprocess.call(['sudo', 'mv', '-f', '/tmp/nix.conf', os.path.dirname(conf_file)])
     subprocess.call(['sudo', 'pkill', 'nix-daemon'])
