@@ -4,6 +4,7 @@ import pwd
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import rich
@@ -185,7 +186,7 @@ def add_to_keyval(item: Union[Comment, Blank, KeyVal], my_dict: dict[str, str]) 
     return item
 
 
-def install_substituter_non_nix(path: str, substituter: str, pub_key: str) -> None:
+def install_substituter_non_nixos(path: str, substituter: str, pub_key: str) -> None:
     conf = read_config(path)
     if not contains_key(conf, 'substituters'):
         conf.append(KeyVal('substituters', 'https://cache.nixos.org/'))
@@ -200,25 +201,30 @@ def print_substituters_warning() -> None:
     add_user_to_trusted = ' '.join(new_trusted_users)
     add_user_to_trusted_nix = ' '.join([f'"{s}"' for s in new_trusted_users])
     rich.print(
-        f'⚠️ [yellow] The k-framework binary cache [green]{K_FRAMEWORK_CACHE}[/] in not configured in your nix installation and'
+        f'⚠️ [yellow] The k-framework binary cache [green]{K_FRAMEWORK_CACHE}[/] in not configured in your nix installation and\n'
         'the current user does not have sufficient permissions to add and use it.\n'
-        '[blue]kup[/] relies on this cache to provide faster installation using pre-built binaries.[/]\n'
+        '[blue]kup[/] relies on this cache to provide faster installation using pre-built binaries.[/]\n\n'
         'You can still install kup packages from source, however, to avoid building kup packages on your local machine, consider:\n'
     )
     if NIXOS_VERSION is None:
+        conf_exists = os.path.exists('/etc/nix/nix.conf')
+        bullet = 'a) ' if conf_exists else '   '
         rich.print(
-            'a) Re-running this command as root to modify the nix cache configuration ([green]recommended[/])\n\n'
-            'b) Running the following command, to add the current user as trusted:\n\n'
-            f'   [green]echo "trusted-users = {add_user_to_trusted}" | sudo tee -a /etc/nix/nix.conf && sudo pkill nix-daemon[/]\n\n\n'
-            '    and then re-running the current command.'
+            f'{bullet}Re-running this command as root to modify the nix cache configuration ([green]recommended[/])\n'
         )
+        if conf_exists:
+            rich.print(
+                'b) Running the following command, to add the current user as trusted:\n\n'
+                f'   [green]echo "trusted-users = {add_user_to_trusted}" | sudo tee -a /etc/nix/nix.conf && sudo pkill nix-daemon[/]\n\n'
+                '   and then re-running the current command.'
+            )
     else:
         nix_setting = 'nix.settings.trusted-users' if NIXOS_VERSION.startswith('22') else 'nix.trustedUsers'
         rich.print(
             'a) Re-running this command as root to modify the NixOS configuration ([green]recommended[/])\n\n'
             'b) Adding/modifying the following setting in your [green]/etc/nixos/configuration.nix[/] to add the current user as trusted:\n\n'
             f'   [green]{nix_setting} = [ {add_user_to_trusted_nix} ];[/]\n\n'
-            '   then rebuilding your configuration via [green]sudo nixos-rebuild switch[/] and re-running this command.\n\n'
+            '   then rebuilding your configuration via [green]sudo nixos-rebuild switch[/] and re-running this command.'
         )
 
 
@@ -226,12 +232,9 @@ def install_substituter(name: str, substituter: str, pub_key: str) -> None:
     if NIXOS_VERSION is not None and USER_IS_ROOT:
         install_substituter_nixos(name, substituter, pub_key)
     elif NIXOS_VERSION is None and USER_IS_ROOT:
-        if not os.path.exists('/etc/nix/nix.conf'):
-            rich.print(
-                '❗ [red] The file [green]/etc/nix/nix.conf[/] could not be found! Make sure you have correctly set up nix.[/]'
-            )
-            return
-        install_substituter_non_nix('/etc/nix/nix.conf', substituter, pub_key)
+        os.makedirs('/etc/nix/', exist_ok=True)
+        Path('/etc/nix/nix.conf').touch(exist_ok=True)
+        install_substituter_non_nixos('/etc/nix/nix.conf', substituter, pub_key)
     elif USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         pass
