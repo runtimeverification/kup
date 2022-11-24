@@ -5,7 +5,6 @@ import textwrap
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import nix
 import requests
 import rich
 from rich.console import Console
@@ -14,7 +13,8 @@ from rich.theme import Theme
 from rich.tree import Tree
 from terminaltables import SingleTable  # type: ignore
 
-from package import AvailablePackage, ConcretePackage, PackageVersion
+from .package import AvailablePackage, ConcretePackage, PackageVersion
+from .nix import SYSTEM, nix, nix_detach
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
@@ -27,14 +27,14 @@ LOCAL = '\033[3mlocal checkout\033[0m'
 
 
 available_packages: Dict[str, AvailablePackage] = {
-    'kup': AvailablePackage('kup', f'packages.{nix.SYSTEM}.kup'),
-    'k': AvailablePackage('k', f'packages.{nix.SYSTEM}.k'),
-    'kavm': AvailablePackage('avm-semantics', f'packages.{nix.SYSTEM}.kavm'),
-    'kevm': AvailablePackage('evm-semantics', f'packages.{nix.SYSTEM}.kevm'),
-    'kplutus': AvailablePackage('plutus-core-semantics', f'packages.{nix.SYSTEM}.kplutus'),
-    'kore-exec': AvailablePackage('haskell-backend', f'packages.{nix.SYSTEM}.kore:exe:kore-exec'),
-    'kore-rpc': AvailablePackage('haskell-backend', f'packages.{nix.SYSTEM}.kore:exe:kore-rpc'),
-    'pyk': AvailablePackage('pyk', f'packages.{nix.SYSTEM}.pyk'),
+    'kup': AvailablePackage('kup', f'packages.{SYSTEM}.kup'),
+    'k': AvailablePackage('k', f'packages.{SYSTEM}.k'),
+    'kavm': AvailablePackage('avm-semantics', f'packages.{SYSTEM}.kavm'),
+    'kevm': AvailablePackage('evm-semantics', f'packages.{SYSTEM}.kevm'),
+    'kplutus': AvailablePackage('plutus-core-semantics', f'packages.{SYSTEM}.kplutus'),
+    'kore-exec': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-exec'),
+    'kore-rpc': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-rpc'),
+    'pyk': AvailablePackage('pyk', f'packages.{SYSTEM}.pyk'),
 }
 
 packages: Dict[str, ConcretePackage] = {}
@@ -42,7 +42,7 @@ installed_packages: List[str] = []
 
 
 def check_package_version(p: AvailablePackage, current_url: str) -> str:
-    result = nix.nix(['flake', 'metadata', f'github:runtimeverification/{p.repo}', '--json'], is_install=False)
+    result = nix(['flake', 'metadata', f'github:runtimeverification/{p.repo}', '--json'], is_install=False)
     meta = json.loads(result)
 
     if meta['url'] == current_url:
@@ -101,7 +101,7 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
 
 def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePackage]) -> dict:
     try:
-        result = nix.nix(
+        result = nix(
             ['flake', 'metadata', f'github:runtimeverification/{package.repo}', '--json'], is_install=False
         )
     except Exception:
@@ -304,14 +304,14 @@ def update_or_install_package(
 
     if type(package) is ConcretePackage:
         if package.immutable or version or package_overrides:
-            nix.nix(['profile', 'remove', str(package.index)], is_install=False)
+            nix(['profile', 'remove', str(package.index)], is_install=False)
             overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
-            nix.nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
+            nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
         else:
-            nix.nix(['profile', 'upgrade', str(package.index)])
+            nix(['profile', 'upgrade', str(package.index)])
     else:
         overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
-        nix.nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
+        nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
 
 
 def install_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
@@ -391,7 +391,7 @@ def remove_package(package_name: str) -> None:
             # not try to remove kup twice
             return remove_package(package_name)
     package = packages[package_name]
-    nix.nix(['profile', 'remove', str(package.index)], is_install=False)
+    nix(['profile', 'remove', str(package.index)], is_install=False)
 
 
 def print_help(subcommand: str, parser: ArgumentParser) -> None:
@@ -502,7 +502,7 @@ def main() -> None:
         temporary_package = available_packages[args.package]
         path = mk_path(f'github:runtimeverification/{temporary_package.repo}', args.version)
         overrides = mk_override_args(args.package, temporary_package, args.override)
-        nix.nix_detach(['shell', f'{path}#{temporary_package.package}'] + overrides)
+        nix_detach(['shell', f'{path}#{temporary_package.package}'] + overrides)
 
 
 if __name__ == '__main__':
