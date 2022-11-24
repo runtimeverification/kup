@@ -214,17 +214,19 @@ def print_substituters_warning() -> None:
     add_user_to_trusted = ' '.join(new_trusted_users)
     add_user_to_trusted_nix = ' '.join([f'"{s}"' for s in new_trusted_users])
     rich.print(
-        f'⚠️ [yellow] The k-framework binary cache [green]{K_FRAMEWORK_CACHE}[/] in not configured in your nix installation and\n'
+        f'\n⚠️ [yellow] The k-framework binary cache [green]{K_FRAMEWORK_CACHE}[/] in not configured in your nix installation and\n'
         'the current user does not have sufficient permissions to add and use it.\n'
         '[blue]kup[/] relies on this cache to provide faster installation using pre-built binaries.[/]\n\n'
-        'You can still install kup packages from source, however, to avoid building kup packages on your local machine, consider:\n'
+        'You can still install kup packages from source, however, to avoid building the packages on your local machine, consider:\n'
     )
     if NIXOS_VERSION is None:
         rich.print(
             f'1) letting [blue]kup[/] modify the nix cache configuration. You will be prompted for root access. ([green]recommended[/])\n\n'
             '2) running the following command, to add the current user as trusted:\n\n'
             f'   [green]echo "trusted-users = {add_user_to_trusted}" | sudo tee -a /etc/nix/nix.conf && sudo pkill nix-daemon[/]\n\n'
-            '   and then re-running the current command.'
+            '   and then re-running the current command.\n\n'
+            '   Note: [green]/etc/nix/nix.conf[/] may not exist, in which case, you will first need to run:\n\n'
+            f'   sudo mkdir -p /etc/nix && touch /etc/nix/nix.conf[/]\n\n'
         )
     else:
         nix_setting = 'nix.settings.trusted-users' if NIXOS_VERSION.startswith('22') else 'nix.trustedUsers'
@@ -244,7 +246,7 @@ def install_substituter(name: str, substituter: str, pub_key: str) -> None:
         return
 
     print_substituters_warning()
-    choice = input().lower()
+    choice = input().strip().lower()
 
     if choice in {'1', '1)'}:
         if NIXOS_VERSION is not None:

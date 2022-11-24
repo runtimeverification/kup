@@ -498,10 +498,11 @@ def main() -> None:
         trusted_check = '🟢' if USER_IS_TRUSTED else '🟠'
         substituter_check = '🟢' if CONTAINS_SUBSTITUTERS else ('🟠' if USER_IS_TRUSTED else '🔴')
         rich.print(
-            f'User is trusted                      {trusted_check}\n'
-            f'K-framework substituter is set up    {substituter_check}\n\n'
+            f'\nUser is trusted                      {trusted_check}\n'
+            f'K-framework substituter is set up    {substituter_check}\n'
         )
         if not USER_IS_TRUSTED and not CONTAINS_SUBSTITUTERS:
+            print()
             install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
     elif args.command == 'install':
         install_package(args.package, args.version, args.override)
