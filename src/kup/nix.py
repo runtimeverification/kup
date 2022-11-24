@@ -4,7 +4,6 @@ import pwd
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import rich
@@ -97,9 +96,6 @@ in {
 
 def install_substituter_nixos(name: str, substituter: str, pub_key: str) -> None:
     nixos_path = '/etc/nixos'
-    if not os.access(nixos_path, os.W_OK):
-        rich.print('❗ [red] Unable to write config to [green]/etc/nixos[/]!')
-        return
 
     cache_module = f"""{{
   nix = {{
@@ -112,14 +108,20 @@ def install_substituter_nixos(name: str, substituter: str, pub_key: str) -> None
   }};
 }}
 """
-    if not os.path.exists(f'{nixos_path}/kup'):
-        os.makedirs(f'{nixos_path}/kup')
 
-    with open(f'{nixos_path}/kup.nix', 'w') as glue_file:
+    with open('/tmp/kup.nix', 'w') as glue_file:
         glue_file.write(GLUE_MODULE)
 
-    with open(f'{nixos_path}/kup/{name}.nix', 'w') as cache_file:
+    os.makedirs('/tmp/kup', exist_ok=True)
+
+    with open(f'/tmp/{name}.nix', 'w') as cache_file:
         cache_file.write(cache_module)
+
+    if not os.path.exists(f'{nixos_path}/kup'):
+        subprocess.call(['sudo', 'mkdir', '-p', f'{nixos_path}/kup'])
+
+    subprocess.call(['sudo', 'mv', '-f', f'/tmp/{name}.nix', f'{nixos_path}/kup'])
+    subprocess.call(['sudo', 'mv', '-f', '/tmp/kup.nix', nixos_path])
 
     rich.print(
         f'The [blue]kup[/] cache configuration was successfully written to [green]{nixos_path}/kup/{name}.nix[/].\n\n'
@@ -148,6 +150,8 @@ class KeyVal:
 
 def read_config(path: str) -> List[Union[Comment, Blank, KeyVal]]:
     conf: List[Union[Comment, Blank, KeyVal]] = []
+    if not os.path.exists(path):
+        return conf
     with open(path, 'r') as fp:
         for line in fp:
             stripped = line.strip()
@@ -192,7 +196,14 @@ def install_substituter_non_nixos(path: str, substituter: str, pub_key: str) -> 
         conf.append(KeyVal('substituters', 'https://cache.nixos.org/'))
         conf.append(KeyVal('trusted-public-keys', 'cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY='))
     new_conf = [add_to_keyval(i, {'substituters': substituter, 'trusted-public-keys': pub_key}) for i in conf]
-    write_config(path, new_conf)
+    write_config('/tmp/nix.conf', new_conf)
+
+    if os.path.exists(path):
+        subprocess.call(['sudo', 'cp', '-f', path, f'{path}.bak'])
+
+    subprocess.call(['sudo', 'mv', '-f', '/tmp/nix.conf', path])
+    subprocess.call(['sudo', 'pkill', 'nix-daemon'])
+
     rich.print(f'The [blue]kup[/] cache configuration was successfully written to [green]{path}[/].')
 
 
@@ -207,39 +218,39 @@ def print_substituters_warning() -> None:
         'You can still install kup packages from source, however, to avoid building kup packages on your local machine, consider:\n'
     )
     if NIXOS_VERSION is None:
-        conf_exists = os.path.exists('/etc/nix/nix.conf')
-        bullet = 'a) ' if conf_exists else '   '
         rich.print(
-            f'{bullet}Re-running this command as root to modify the nix cache configuration ([green]recommended[/])\n'
+            f'1) letting [blue]kup[/] modify the nix cache configuration. You will be prompted for root access. ([green]recommended[/])\n\n'
+            '2) running the following command, to add the current user as trusted:\n\n'
+            f'   [green]echo "trusted-users = {add_user_to_trusted}" | sudo tee -a /etc/nix/nix.conf && sudo pkill nix-daemon[/]\n\n'
+            '   and then re-running the current command.'
         )
-        if conf_exists:
-            rich.print(
-                'b) Running the following command, to add the current user as trusted:\n\n'
-                f'   [green]echo "trusted-users = {add_user_to_trusted}" | sudo tee -a /etc/nix/nix.conf && sudo pkill nix-daemon[/]\n\n'
-                '   and then re-running the current command.'
-            )
     else:
         nix_setting = 'nix.settings.trusted-users' if NIXOS_VERSION.startswith('22') else 'nix.trustedUsers'
         rich.print(
-            'a) Re-running this command as root to modify the NixOS configuration ([green]recommended[/])\n\n'
-            'b) Adding/modifying the following setting in your [green]/etc/nixos/configuration.nix[/] to add the current user as trusted:\n\n'
+            '1) letting [blue]kup[/] modify the nix cache configuration. You will be prompted for root access. ([green]recommended[/])\n\n'
+            '2) adding/modifying the following setting in your [green]/etc/nixos/configuration.nix[/] to add the current user as trusted:\n\n'
             f'   [green]{nix_setting} = [ {add_user_to_trusted_nix} ];[/]\n\n'
             '   then rebuilding your configuration via [green]sudo nixos-rebuild switch[/] and re-running this command.'
         )
 
+    rich.print('Please select option [1] or [2], or press any key to continue without any changes: ')
+
 
 def install_substituter(name: str, substituter: str, pub_key: str) -> None:
-    if NIXOS_VERSION is not None and USER_IS_ROOT:
-        install_substituter_nixos(name, substituter, pub_key)
-    elif NIXOS_VERSION is None and USER_IS_ROOT:
-        os.makedirs('/etc/nix/', exist_ok=True)
-        Path('/etc/nix/nix.conf').touch(exist_ok=True)
-        install_substituter_non_nixos('/etc/nix/nix.conf', substituter, pub_key)
-    elif USER_IS_TRUSTED:
+    if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
-        pass
-    else:
-        print_substituters_warning()
+        return
+
+    print_substituters_warning()
+    choice = input().lower()
+
+    if choice in {'1', '1)'}:
+        if NIXOS_VERSION is not None:
+            install_substituter_nixos(name, substituter, pub_key)
+        else:
+            install_substituter_non_nixos('/etc/nix/nix.conf', substituter, pub_key)
+    elif choice in {'2', '2)'}:
+        sys.exit(0)
 
 
 # nix tends to fail on macs with a segfault so we add `GC_DONT_GC=1` if on macOS (i.e. darwin)
