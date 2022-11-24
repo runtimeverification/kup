@@ -204,7 +204,7 @@ def install_substituter_non_nixos(conf_file: str, substituter: str, pub_key: str
     subprocess.call(['sudo', 'mv', '-f', '/tmp/nix.conf', os.path.dirname(conf_file)])
     subprocess.call(['sudo', 'pkill', 'nix-daemon'])
 
-    rich.print(f'The [blue]kup[/] cache configuration was successfully written to [green]{path}[/].')
+    rich.print(f'The [blue]kup[/] cache configuration was successfully written to [green]{conf_file}[/].')
 
 
 def print_substituters_warning() -> None:
