@@ -13,8 +13,8 @@ from rich.theme import Theme
 from rich.tree import Tree
 from terminaltables import SingleTable  # type: ignore
 
-from .package import AvailablePackage, ConcretePackage, PackageVersion
 from .nix import SYSTEM, nix, nix_detach
+from .package import AvailablePackage, ConcretePackage, PackageVersion
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
@@ -101,9 +101,7 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
 
 def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePackage]) -> dict:
     try:
-        result = nix(
-            ['flake', 'metadata', f'github:runtimeverification/{package.repo}', '--json'], is_install=False
-        )
+        result = nix(['flake', 'metadata', f'github:runtimeverification/{package.repo}', '--json'], is_install=False)
     except Exception:
         return {}
     meta = json.loads(result)
