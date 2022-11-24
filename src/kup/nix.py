@@ -190,18 +190,18 @@ def add_to_keyval(item: Union[Comment, Blank, KeyVal], my_dict: dict[str, str]) 
     return item
 
 
-def install_substituter_non_nixos(path: str, substituter: str, pub_key: str) -> None:
-    conf = read_config(path)
+def install_substituter_non_nixos(conf_file: str, substituter: str, pub_key: str) -> None:
+    conf = read_config(conf_file)
     if not contains_key(conf, 'substituters'):
         conf.append(KeyVal('substituters', 'https://cache.nixos.org/'))
         conf.append(KeyVal('trusted-public-keys', 'cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY='))
     new_conf = [add_to_keyval(i, {'substituters': substituter, 'trusted-public-keys': pub_key}) for i in conf]
     write_config('/tmp/nix.conf', new_conf)
 
-    if os.path.exists(path):
-        subprocess.call(['sudo', 'cp', '-f', path, f'{path}.bak'])
+    if os.path.exists(conf_file):
+        subprocess.call(['sudo', 'cp', '-f', conf_file, f'{conf_file}.bak'])
 
-    subprocess.call(['sudo', 'mv', '-f', '/tmp/nix.conf', path])
+    subprocess.call(['sudo', 'mv', '-f', '/tmp/nix.conf', os.path.dirname(conf_file)])
     subprocess.call(['sudo', 'pkill', 'nix-daemon'])
 
     rich.print(f'The [blue]kup[/] cache configuration was successfully written to [green]{path}[/].')
