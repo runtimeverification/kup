@@ -239,16 +239,16 @@ def install_substituter(name: str, substituter: str, pub_key: str) -> None:
         print_substituters_warning()
 
 
-if not CONTAINS_SUBSTITUTERS:
-    install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
-    _, CONTAINS_SUBSTITUTERS = check_substituters()
-
-
 # nix tends to fail on macs with a segfault so we add `GC_DONT_GC=1` if on macOS (i.e. darwin)
 # The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
 def nix(args: List[str], is_install: bool = True) -> bytes:
+    global CONTAINS_SUBSTITUTERS
+    if is_install and not CONTAINS_SUBSTITUTERS:
+        install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
+        _, CONTAINS_SUBSTITUTERS = check_substituters()
+
     return nix_raw(
         args,
         NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS and USER_IS_TRUSTED else [],

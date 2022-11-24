@@ -13,7 +13,16 @@ from rich.theme import Theme
 from rich.tree import Tree
 from terminaltables import SingleTable  # type: ignore
 
-from .nix import SYSTEM, nix, nix_detach
+from .nix import (
+    CONTAINS_SUBSTITUTERS,
+    K_FRAMEWORK_CACHE,
+    K_FRAMEWORK_PUBLIC_KEY,
+    SYSTEM,
+    USER_IS_TRUSTED,
+    install_substituter,
+    nix,
+    nix_detach,
+)
 from .package import AvailablePackage, ConcretePackage, PackageVersion
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
@@ -476,6 +485,8 @@ def main() -> None:
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
 
+    subparser.add_parser('doctor', help='check if kup is installed correctly')
+
     args = parser.parse_args()
     if 'help' in args and args.help:
         with open(os.path.join(KUP_DIR, f'{args.command}-help.md'), 'r+') as help_file:
@@ -483,6 +494,16 @@ def main() -> None:
             sys.exit(0)
     if args.command == 'list':
         list_package(args.package, args.inputs)
+    elif args.command == 'doctor':
+        trusted_check = '🟢' if USER_IS_TRUSTED else '🟠'
+        substituter_check = '🟢' if CONTAINS_SUBSTITUTERS else ('🟠' if USER_IS_TRUSTED else '🔴')
+        rich.print(
+            f'User is trusted                      {trusted_check}\n'
+            f'K-framework substituter is set up    {substituter_check}'
+        )
+        if not USER_IS_TRUSTED and not CONTAINS_SUBSTITUTERS:
+            rich.print("[blue]kup[/]'s cache is not configured correctly... attempting to fix now")
+            install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
     elif args.command == 'install':
         install_package(args.package, args.version, args.override)
     elif args.command == 'update':
