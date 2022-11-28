@@ -1,7 +1,5 @@
 import json
 import os
-import pwd
-import subprocess
 import sys
 import textwrap
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
@@ -15,132 +13,26 @@ from rich.theme import Theme
 from rich.tree import Tree
 from terminaltables import SingleTable  # type: ignore
 
+from .nix import (
+    CONTAINS_SUBSTITUTERS,
+    K_FRAMEWORK_CACHE,
+    K_FRAMEWORK_PUBLIC_KEY,
+    SYSTEM,
+    USER_IS_TRUSTED,
+    install_substituter,
+    nix,
+    nix_detach,
+)
+from .package import AvailablePackage, ConcretePackage, PackageVersion
+
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
 KUP_DIR = os.path.split(os.path.abspath(__file__))[0]  # i.e. /path/to/dir/
-USER = pwd.getpwuid(os.getuid())[0]
 
 INSTALLED = '🟢 \033[92minstalled\033[0m'
 AVAILABLE = '🔵 \033[94mavailable\033[0m'
 UPDATE = '🟠 \033[93mnewer version available\033[0m'
 LOCAL = '\033[3mlocal checkout\033[0m'
-
-NIX_SUBSTITUTERS = [
-    '--option',
-    'extra-substituters',
-    'https://k-framework.cachix.org https://cache.iog.io',
-    '--option',
-    'extra-trusted-public-keys',
-    (
-        'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE= '
-        'hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ='
-    ),
-]
-
-
-def nix_raw(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS, gc_dont_gc: bool = True) -> bytes:
-    my_env = os.environ.copy()
-    if gc_dont_gc:
-        my_env['GC_DONT_GC'] = '1'
-    try:
-        output = subprocess.check_output(
-            ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags,
-            env=my_env,
-        )
-    except subprocess.CalledProcessError as exc:
-        print('❗ \033[91mThe operation could not be completed. See above for the error output ...\033[0m')
-        sys.exit(exc.returncode)
-    else:
-        return output
-
-
-SYSTEM = (
-    nix_raw(['eval', '--impure', '--expr', 'builtins.currentSystem'], extra_flags=[])
-    .decode('utf8')
-    .strip()
-    .replace('"', '')
-)
-
-TRUSTED_USERS = []
-
-
-def check_substituters() -> Tuple[bool, bool]:
-    global TRUSTED_USERS
-    try:
-        result = nix_raw(['show-config', '--json'], extra_flags=[])
-    except Exception:
-        rich.print("⚠️ [yellow]Could not run 'nix show-config'.")
-        return False, False
-    config = json.loads(result)
-    try:
-        TRUSTED_USERS = config['trusted-users']['value']
-        current_user_is_trusted = True if USER in TRUSTED_USERS else False
-        substituters = config['substituters']['value']
-        has_all_substituters = (
-            True
-            if 'https://k-framework.cachix.org' in substituters
-            and ('https://cache.iog.io' in substituters or 'https://hydra.iohk.io' in substituters)
-            else False
-        )
-        return current_user_is_trusted, has_all_substituters
-    except Exception:
-        rich.print('⚠️ [yellow]Could not fetch nix substituters or figure out if the current user is trusted by nix.')
-        return False, False
-
-
-IS_TRUSTED_USER, CONTAINS_SUBSTITUTERS = check_substituters()
-
-
-def print_substituters_warning() -> None:
-    add_user_to_trusted = ' '.join([f'"{s}"' for s in TRUSTED_USERS + [USER]])
-    rich.print(
-        '⚠️ [yellow] The current user does not have sufficient permissions to configure nix binary caches,\n'
-        'which [blue]kup[/] relies on, to provide faster installation using pre-built binaries.[/]\n'
-        'To avoid building the selected package on your local machine, you can either:\n\n'
-        'a) Add the following line to your nix configuration file, to add this user as trusted and then try again:\n\n'
-        f'   [green]nix.trustedUsers = [ {add_user_to_trusted} ];[/]\n\n\n'
-        '   You are most likely to find your nix configuration file in the following place:\n\n'
-        '   The system-wide configuration file [green]sysconfdir/nix/nix.conf[/] (i.e. [green]/etc/nix/nix.conf[/] on most systems),\n'
-        '   or [green]$NIX_CONF_DIR/nix.conf[/] if [green]NIX_CONF_DIR[/] is set.\n\n'
-        '   Nix will also look for [green]nix/nix.conf[/] files in [green]XDG_CONFIG_DIRS[/] and [green]XDG_CONFIG_HOME[/].\n'
-        '   If unset, [green]XDG_CONFIG_DIRS[/] defaults to [green]/etc/xdg[/], and [green]XDG_CONFIG_HOME[/] defaults to [green]$HOME/.config[/]\n'
-        '   as per XDG Base Directory Specification.\n\n'
-        'b) Re-run this command as root. [red](not recommended)[/]\n\n\n'
-        'For more information on the nix config file, see: https://nixos.org/manual/nix/stable/command-ref/conf-file.html\n'
-    )
-
-
-# nix tends to fail on macs with a segfault so we add `GC_DONT_GC=1` if on macOS (i.e. darwin)
-# The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
-# expression. This may cause the process to run out of memory, but hasn't been observed for our
-# derivations in practice, so should be ok to do.
-def nix(args: List[str], is_install: bool = True) -> bytes:
-    if is_install and not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
-        print_substituters_warning()
-    return nix_raw(
-        args,
-        NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS and IS_TRUSTED_USER else [],
-        True if 'darwin' in SYSTEM else False,
-    )
-
-
-def nix_detach(args: List[str]) -> None:
-    my_env = os.environ.copy()
-    if 'darwin' in SYSTEM:
-        my_env['GC_DONT_GC'] = '1'
-    nix = subprocess.check_output(['which', 'nix']).decode('utf8').strip()
-    if not IS_TRUSTED_USER and not CONTAINS_SUBSTITUTERS:
-        print_substituters_warning()
-    extra_flags = NIX_SUBSTITUTERS if not CONTAINS_SUBSTITUTERS and IS_TRUSTED_USER else []
-    os.execve(nix, [nix] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags, my_env)
-
-
-class AvailablePackage:
-    __slots__ = ['repo', 'package']
-
-    def __init__(self, repo: str, package: str):
-        self.repo = repo
-        self.package = package
 
 
 available_packages: Dict[str, AvailablePackage] = {
@@ -153,27 +45,6 @@ available_packages: Dict[str, AvailablePackage] = {
     'kore-rpc': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-rpc'),
     'pyk': AvailablePackage('pyk', f'packages.{SYSTEM}.pyk'),
 }
-
-
-class ConcretePackage:
-    __slots__ = ['repo', 'package', 'status', 'version', 'immutable', 'index']
-
-    def __init__(
-        self,
-        repo: str,
-        package: str,
-        status: str,
-        version: str = '-',
-        immutable: bool = True,
-        index: int = -1,
-    ):
-        self.repo = repo
-        self.package = package
-        self.version = version
-        self.status = status
-        self.immutable = immutable
-        self.index = index
-
 
 packages: Dict[str, ConcretePackage] = {}
 installed_packages: List[str] = []
@@ -332,16 +203,6 @@ def reload_packages() -> None:
             packages[pkg_name] = ConcretePackage(available_package.repo, available_package.package, AVAILABLE, '')
 
 
-class PackageVersion:
-    __slots__ = ['sha', 'message', 'tag', 'merged_at']
-
-    def __init__(self, sha: str, message: str, tag: Optional[str], merged_at: str):
-        self.sha = sha
-        self.message = message
-        self.tag = tag
-        self.merged_at = merged_at
-
-
 def highlight_row(condition: bool, xs: List[str]) -> List[str]:
     if condition:
         return [f'\033[92m{x}\033[0m' for x in xs]
@@ -353,7 +214,7 @@ def list_package(package_name: str, show_inputs: bool) -> None:
     reload_packages()
     if package_name != 'all':
         if package_name not in available_packages.keys():
-            print(
+            rich.print(
                 f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
                 "[/]Use '[blue]kup list[/]' to see all the available packages."
             )
@@ -624,6 +485,8 @@ def main() -> None:
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
 
+    subparser.add_parser('doctor', help='check if kup is installed correctly')
+
     args = parser.parse_args()
     if 'help' in args and args.help:
         with open(os.path.join(KUP_DIR, f'{args.command}-help.md'), 'r+') as help_file:
@@ -631,6 +494,16 @@ def main() -> None:
             sys.exit(0)
     if args.command == 'list':
         list_package(args.package, args.inputs)
+    elif args.command == 'doctor':
+        trusted_check = '🟢' if USER_IS_TRUSTED else '🟠'
+        substituter_check = '🟢' if CONTAINS_SUBSTITUTERS else ('🟠' if USER_IS_TRUSTED else '🔴')
+        rich.print(
+            f'\nUser is trusted                      {trusted_check}\n'
+            f'K-framework substituter is set up    {substituter_check}\n'
+        )
+        if not USER_IS_TRUSTED and not CONTAINS_SUBSTITUTERS:
+            print()
+            install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
     elif args.command == 'install':
         install_package(args.package, args.version, args.override)
     elif args.command == 'update':
