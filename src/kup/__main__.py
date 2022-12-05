@@ -161,7 +161,7 @@ def flatten_inputs_paths(inputs: dict) -> Tuple[List[Tuple[List[str], str]], Lis
     return flattened_proper, flattened_follow
 
 
-def reload_packages() -> None:
+def reload_packages(load_versions: bool = True) -> None:
     global packages, installed_packages
 
     if os.path.exists(f'{os.getenv("HOME")}/.nix-profile/manifest.json'):
@@ -181,7 +181,7 @@ def reload_packages() -> None:
                 f'github:runtimeverification/{available_package.repo}'
             ):
                 version = m['url'].removeprefix(f'github:runtimeverification/{available_package.repo}/')
-                status = check_package_version(available_package, m['url'])
+                status = check_package_version(available_package, m['url']) if load_versions else ''
                 immutable = (
                     len(m['originalUrl'].removeprefix(f'github:runtimeverification/{available_package.repo}')) > 1
                 )
@@ -341,6 +341,7 @@ def install_package(package_name: str, package_version: Optional[str], package_o
     else:
         new_package = available_packages[package_name]
         update_or_install_package(package_name, new_package, package_version, package_overrides)
+    rich.print(f" ✅ Successfully installed '[green]{package_name}[/]'.")
 
 
 def update_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
@@ -363,10 +364,11 @@ def update_package(package_name: str, package_version: Optional[str], package_ov
         return
 
     update_or_install_package(package_name, package, package_version, package_overrides)
+    rich.print(f" ✅ Successfully updated '[green]{package_name}[/]'.")
 
 
 def remove_package(package_name: str) -> None:
-    reload_packages()
+    reload_packages(load_versions=False)
     if package_name not in available_packages.keys():
         rich.print(
             f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
@@ -511,7 +513,7 @@ def main() -> None:
     elif args.command == 'remove':
         remove_package(args.package)
     elif args.command == 'shell':
-        reload_packages()
+        reload_packages(load_versions=False)
         if args.package not in available_packages.keys():
             rich.print(
                 f"❗ [red]The package '[green]{args.package}[/]' does not exist.\n"
