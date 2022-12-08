@@ -4,7 +4,7 @@ import os
 import sys
 import textwrap
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 import rich
@@ -67,7 +67,7 @@ packages: Dict[str, ConcretePackage] = {}
 installed_packages: List[str] = []
 
 
-def mk_github_repo_path(package: Union[GithubPackage, ConcretePackage]) -> str:
+def mk_github_repo_path(package: GithubPackage) -> str:
 
     if package.private:
         branch = f'?ref={package.branch}' if package.branch else ''
@@ -135,7 +135,7 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
         return {}
 
 
-def get_package_inputs(name: str, package: Union[GithubPackage, ConcretePackage]) -> dict:
+def get_package_inputs(name: str, package: GithubPackage) -> dict:
     try:
         result = nix(['flake', 'metadata', mk_github_repo_path(package), '--json'], is_install=False)
     except Exception:
@@ -312,7 +312,7 @@ def list_package(package_name: str, show_inputs: bool) -> None:
         print(table.table)
 
 
-def mk_path_package(package: Union[GithubPackage, ConcretePackage], version_or_path: Optional[str]) -> str:
+def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> str:
     if version_or_path:
         if os.path.isdir(version_or_path):
             return os.path.abspath(version_or_path)
@@ -337,9 +337,7 @@ def mk_path(path: str, version_or_path: Optional[str]) -> str:
         return path
 
 
-def mk_override_args(
-    package_name: str, package: Union[GithubPackage, ConcretePackage], overrides: List[List[str]]
-) -> List[str]:
+def mk_override_args(package_name: str, package: GithubPackage, overrides: List[List[str]]) -> List[str]:
     if not overrides:
         return []
     inputs = get_package_inputs(package_name, package)
@@ -372,7 +370,7 @@ def mk_override_args(
 
 def update_or_install_package(
     package_name: str,
-    package: Union[GithubPackage, ConcretePackage],
+    package: GithubPackage,
     version: Optional[str],
     package_overrides: List[List[str]],
 ) -> None:

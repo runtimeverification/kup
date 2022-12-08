@@ -12,7 +12,7 @@ class GithubPackage:
         self.private = private
 
 
-class ConcretePackage:
+class ConcretePackage(GithubPackage):
     __slots__ = ['org', 'repo', 'package', 'status', 'version', 'immutable', 'index', 'branch', 'private']
 
     def __init__(
@@ -27,15 +27,11 @@ class ConcretePackage:
         branch: Optional[str] = None,
         private: bool = False,
     ):
-        self.org = org
-        self.repo = repo
-        self.package = package
         self.version = version
         self.status = status
         self.immutable = immutable
         self.index = index
-        self.branch = branch
-        self.private = private
+        super().__init__(org, repo, package, branch, private)
 
 
 class PackageVersion:
