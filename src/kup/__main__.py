@@ -1,3 +1,4 @@
+import configparser
 import json
 import os
 import sys
@@ -12,6 +13,7 @@ from rich.markdown import Markdown
 from rich.theme import Theme
 from rich.tree import Tree
 from terminaltables import SingleTable  # type: ignore
+from xdg import BaseDirectory
 
 from .nix import (
     CONTAINS_SUBSTITUTERS,
@@ -23,7 +25,7 @@ from .nix import (
     nix,
     nix_detach,
 )
-from .package import AvailablePackage, ConcretePackage, PackageVersion
+from .package import ConcretePackage, GithubPackage, PackageVersion
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
@@ -35,23 +37,48 @@ UPDATE = '🟠 \033[93mnewer version available\033[0m'
 LOCAL = '\033[3mlocal checkout\033[0m'
 
 
-available_packages: Dict[str, AvailablePackage] = {
-    'kup': AvailablePackage('kup', f'packages.{SYSTEM}.kup'),
-    'k': AvailablePackage('k', f'packages.{SYSTEM}.k'),
-    'kavm': AvailablePackage('avm-semantics', f'packages.{SYSTEM}.kavm'),
-    'kevm': AvailablePackage('evm-semantics', f'packages.{SYSTEM}.kevm'),
-    'kplutus': AvailablePackage('plutus-core-semantics', f'packages.{SYSTEM}.kplutus'),
-    'kore-exec': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-exec'),
-    'kore-rpc': AvailablePackage('haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-rpc'),
-    'pyk': AvailablePackage('pyk', f'packages.{SYSTEM}.pyk'),
+available_packages: Dict[str, GithubPackage] = {
+    'kup': GithubPackage('runtimeverification', 'kup', f'packages.{SYSTEM}.kup'),
+    'k': GithubPackage('runtimeverification', 'k', f'packages.{SYSTEM}.k'),
+    'kavm': GithubPackage('runtimeverification', 'avm-semantics', f'packages.{SYSTEM}.kavm'),
+    'kevm': GithubPackage('runtimeverification', 'evm-semantics', f'packages.{SYSTEM}.kevm'),
+    'kplutus': GithubPackage('runtimeverification', 'plutus-core-semantics', f'packages.{SYSTEM}.kplutus'),
+    'kore-exec': GithubPackage('runtimeverification', 'haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-exec'),
+    'kore-rpc': GithubPackage('runtimeverification', 'haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-rpc'),
+    'pyk': GithubPackage('runtimeverification', 'pyk', f'packages.{SYSTEM}.pyk'),
 }
+
+# Load any private packages
+for config_path in BaseDirectory.load_config_paths('kup'):
+    if os.path.exists(os.path.join(config_path, 'user_packages.ini')):
+        config = configparser.ConfigParser()
+
+        config.read(os.path.join(config_path, 'user_packages.ini'))
+        for pkg_name in config.sections():
+            available_packages[pkg_name] = GithubPackage(
+                config[pkg_name]['org'],
+                config[pkg_name]['repo'],
+                f'packages.{SYSTEM}.{config[pkg_name]["package"]}',
+                config[pkg_name]['branch'] if 'branch' in config[pkg_name] else None,
+                bool(config[pkg_name]['private']) if 'private' in config[pkg_name] else False,
+            )
 
 packages: Dict[str, ConcretePackage] = {}
 installed_packages: List[str] = []
 
 
-def check_package_version(p: AvailablePackage, current_url: str) -> str:
-    result = nix(['flake', 'metadata', f'github:runtimeverification/{p.repo}', '--json'], is_install=False)
+def mk_github_repo_path(package: Union[GithubPackage, ConcretePackage]) -> str:
+
+    if package.private:
+        branch = f'?ref={package.branch}' if package.branch else ''
+        return f'git+https://github.com/{package.org}/{package.repo}/{branch}'
+    else:
+        branch = '/' + package.branch if package.branch else ''
+        return f'github:{package.org}/{package.repo}{branch}'
+
+
+def check_package_version(p: GithubPackage, current_url: str) -> str:
+    result = nix(['flake', 'metadata', mk_github_repo_path(p), '--json'], is_install=False)
     meta = json.loads(result)
 
     if meta['url'] == current_url:
@@ -70,7 +97,7 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
         repo = nodes[key]['original']['repo']
         rev = nodes[key]['locked']['rev']
         if 'inputs' not in nodes[key]:
-            return {key: {'repo': repo, 'rev': rev}}
+            return {key: {'repo': repo, 'org': 'runtimeverification', 'rev': rev}}
         else:
             inputs: dict = {}
             for key_input, path in nodes[key]['inputs'].items():
@@ -85,7 +112,7 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
                     ):
                         inputs[key_input] = {'follows': path}
 
-            return {key: {'repo': repo, 'rev': rev, 'inputs': inputs}}
+            return {key: {'repo': repo, 'org': 'runtimeverification', 'rev': rev, 'inputs': inputs}}
 
     elif override:
         if 'inputs' not in nodes[key]:
@@ -108,9 +135,9 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
         return {}
 
 
-def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePackage]) -> dict:
+def get_package_inputs(name: str, package: Union[GithubPackage, ConcretePackage]) -> dict:
     try:
-        result = nix(['flake', 'metadata', f'github:runtimeverification/{package.repo}', '--json'], is_install=False)
+        result = nix(['flake', 'metadata', mk_github_repo_path(package), '--json'], is_install=False)
     except Exception:
         return {}
     meta = json.loads(result)
@@ -121,7 +148,7 @@ def get_package_inputs(name: str, package: Union[AvailablePackage, ConcretePacka
 
 def print_package_tree(inputs: dict, key: str, root: Any = None) -> None:
     rev = (
-        f" - github:runtimeverification/{inputs[key]['repo']} [green]{inputs[key]['rev'][:7]}[/]"
+        f" - github:{inputs[key]['org']}/{inputs[key]['repo']} [green]{inputs[key]['rev'][:7]}[/]"
         if 'rev' in inputs[key]
         else ''
     )
@@ -177,30 +204,54 @@ def reload_packages(load_versions: bool = True) -> None:
     for idx, m in enumerate(manifest):
         if 'attrPath' in m and m['attrPath'] in available_packages_lookup:
             (name, available_package) = available_packages_lookup[m['attrPath']]
-            if 'originalUrl' in m and m['originalUrl'].startswith(
-                f'github:runtimeverification/{available_package.repo}'
-            ):
-                version = m['url'].removeprefix(f'github:runtimeverification/{available_package.repo}/')
+            repo_path = mk_github_repo_path(available_package)
+            if 'originalUrl' in m and m['originalUrl'].startswith(repo_path):
+                if available_package.private:
+                    version = m['url'].split('&rev=')[1]
+                    immutable = 'rev=' in m['originalUrl'] or 'ref=' in m['originalUrl']
+                else:
+                    version = m['url'].removeprefix(f'github:{available_package.org}/{available_package.repo}/')
+                    immutable = (
+                        len(m['originalUrl'].removeprefix(f'github:{available_package.org}/{available_package.repo}'))
+                        > 1
+                    )
+
                 status = check_package_version(available_package, m['url']) if load_versions else ''
-                immutable = (
-                    len(m['originalUrl'].removeprefix(f'github:runtimeverification/{available_package.repo}')) > 1
-                )
                 packages[name] = ConcretePackage(
+                    available_package.org,
                     available_package.repo,
                     available_package.package,
                     status,
                     version,
                     immutable,
                     idx,
+                    available_package.branch,
+                    available_package.private,
                 )
             else:
-                packages[name] = ConcretePackage(available_package.repo, available_package.package, LOCAL, index=idx)
+                packages[name] = ConcretePackage(
+                    available_package.org,
+                    available_package.repo,
+                    available_package.package,
+                    LOCAL,
+                    index=idx,
+                    branch=available_package.branch,
+                    private=available_package.private,
+                )
 
     installed_packages = list(packages.keys())
     for pkg_name in available_packages:
         if pkg_name not in installed_packages:
             available_package = available_packages[pkg_name]
-            packages[pkg_name] = ConcretePackage(available_package.repo, available_package.package, AVAILABLE, '')
+            packages[pkg_name] = ConcretePackage(
+                available_package.org,
+                available_package.repo,
+                available_package.package,
+                AVAILABLE,
+                '',
+                branch=available_package.branch,
+                private=available_package.private,
+            )
 
 
 def highlight_row(condition: bool, xs: List[str]) -> List[str]:
@@ -225,6 +276,9 @@ def list_package(package_name: str, show_inputs: bool) -> None:
             inputs = get_package_inputs(package_name, listed_package)
             print_package_tree(inputs, package_name)
         else:
+            if listed_package.private:
+                rich.print('❗ Listing versions is unsupported for private packages.')
+                return
             tags = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/tags')
             commits = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/commits')
             tagged_releases = {t['commit']['sha']: t for t in tags.json()}
@@ -258,6 +312,21 @@ def list_package(package_name: str, show_inputs: bool) -> None:
         print(table.table)
 
 
+def mk_path_package(package: Union[GithubPackage, ConcretePackage], version_or_path: Optional[str]) -> str:
+    if version_or_path:
+        if os.path.isdir(version_or_path):
+            return os.path.abspath(version_or_path)
+        else:
+            if package.private:
+                rich.print('⚠️ [yellow]Only commit hashes are currently supported for private packages')
+                rev = '&rev=' if package.branch else '?rev='
+                return mk_github_repo_path(package) + rev + version_or_path
+            else:
+                return mk_github_repo_path(package) + '/' + version_or_path
+    else:
+        return mk_github_repo_path(package)
+
+
 def mk_path(path: str, version_or_path: Optional[str]) -> str:
     if version_or_path:
         if os.path.isdir(version_or_path):
@@ -269,7 +338,7 @@ def mk_path(path: str, version_or_path: Optional[str]) -> str:
 
 
 def mk_override_args(
-    package_name: str, package: Union[AvailablePackage, ConcretePackage], overrides: List[List[str]]
+    package_name: str, package: Union[GithubPackage, ConcretePackage], overrides: List[List[str]]
 ) -> List[str]:
     if not overrides:
         return []
@@ -303,11 +372,11 @@ def mk_override_args(
 
 def update_or_install_package(
     package_name: str,
-    package: Union[AvailablePackage, ConcretePackage],
+    package: Union[GithubPackage, ConcretePackage],
     version: Optional[str],
     package_overrides: List[List[str]],
 ) -> None:
-    path = mk_path(f'github:runtimeverification/{package.repo}', version)
+    path = mk_path_package(package, version)
 
     if type(package) is ConcretePackage:
         if package.immutable or version or package_overrides:
@@ -439,6 +508,13 @@ class _HelpShellAction(_HelpAction):
         print_help('shell', parser)
 
 
+class _HelpAddAction(_HelpAction):
+    def __call__(
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+    ) -> None:
+        print_help('add', parser)
+
+
 def main() -> None:
     parser = ArgumentParser(
         description='The K Framework installer',
@@ -489,6 +565,12 @@ def main() -> None:
 
     subparser.add_parser('doctor', help='check if kup is installed correctly')
 
+    add = subparser.add_parser('add', help='add a private package to kup', add_help=False)
+    add.add_argument('name', type=str)
+    add.add_argument('uri', type=str)
+    add.add_argument('package', type=str)
+    add.add_argument('-h', '--help', action=_HelpAddAction)
+
     args = parser.parse_args()
     if 'help' in args and args.help:
         with open(os.path.join(KUP_DIR, f'{args.command}-help.md'), 'r+') as help_file:
@@ -512,6 +594,72 @@ def main() -> None:
         update_package(args.package, args.version, args.override)
     elif args.command == 'remove':
         remove_package(args.package)
+    elif args.command == 'add':
+        if '/' in args.uri:
+            org, rest = args.uri.split('/', 1)
+            if '/' in rest:
+                repo, branch = rest.split('/', 1)
+            else:
+                repo = rest
+                branch = None
+
+            try:
+                new_package = GithubPackage(org, repo, args.package, branch, private=False)
+
+                nix(
+                    ['flake', 'metadata', mk_github_repo_path(new_package), '--json'],
+                    is_install=False,
+                    exit_on_error=False,
+                )
+            except Exception:
+                try:
+                    new_package = GithubPackage(org, repo, args.package, branch, private=True)
+
+                    nix(
+                        ['flake', 'metadata', mk_github_repo_path(new_package), '--json'],
+                        is_install=False,
+                        exit_on_error=False,
+                    )
+                except Exception:
+                    rich.print(
+                        '❗ [red]Could not find the specified package.[/]\n'
+                        '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n'
+                    )
+                    if not branch:
+                        rich.print(
+                            '   If your repository has a [blue]main[/] branch instead of [blue]master[/], try\n\n'
+                            f'     [green] kup add {args.name} {args.uri}/main {args.package}\n'
+                        )
+                    sys.exit(1)
+
+            nix(
+                ['eval', f'{mk_github_repo_path(new_package)}#packages.{SYSTEM}.{args.package}', '--json'],
+                is_install=False,
+            )
+            config_path = BaseDirectory.load_first_config('kup')
+            config = configparser.ConfigParser()
+            if config_path and os.path.exists(os.path.join(config_path, 'user_packages.ini')):
+                config.read(os.path.join(config_path, 'user_packages.ini'))
+
+            config[args.name] = {
+                'org': new_package.org,
+                'repo': new_package.repo,
+                'package': new_package.package,
+                'private': str(new_package.private),
+            }
+
+            if new_package.branch:
+                config[args.name]['branch'] = new_package.branch
+
+            config_path = BaseDirectory.save_config_path('kup')
+
+            with open(os.path.join(config_path, 'user_packages.ini'), 'w') as configfile:
+                config.write(configfile)
+
+            rich.print(f" ✅ Successfully added new package '[green]{args.name}[/]'.")
+
+        else:
+            rich.print(f"❗ The URI '[red]{args.uri}[/]' is invalid.\n" "   The correct format is '[green]org/repo[/]'.")
     elif args.command == 'shell':
         reload_packages(load_versions=False)
         if args.package not in available_packages.keys():
@@ -521,7 +669,7 @@ def main() -> None:
             )
             return
         temporary_package = available_packages[args.package]
-        path = mk_path(f'github:runtimeverification/{temporary_package.repo}', args.version)
+        path = mk_path_package(temporary_package, args.version)
         overrides = mk_override_args(args.package, temporary_package, args.override)
         nix_detach(['shell', f'{path}#{temporary_package.package}'] + overrides)
 

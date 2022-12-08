@@ -28,20 +28,29 @@ NIX_SUBSTITUTERS = [
 ]
 
 
-def nix_raw(args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS, gc_dont_gc: bool = True) -> bytes:
+def nix_raw(
+    args: List[str], extra_flags: List[str] = NIX_SUBSTITUTERS, gc_dont_gc: bool = True, exit_on_error: bool = True
+) -> bytes:
     my_env = os.environ.copy()
     if gc_dont_gc:
         my_env['GC_DONT_GC'] = '1'
-    try:
-        output = subprocess.check_output(
+    if exit_on_error:
+        try:
+            output = subprocess.check_output(
+                ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags,
+                env=my_env,
+            )
+        except subprocess.CalledProcessError as exc:
+            rich.print('❗ [red]The operation could not be completed. See above for the error output ...[/]')
+            sys.exit(exc.returncode)
+    else:
+        return subprocess.check_output(
             ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags,
             env=my_env,
+            stderr=subprocess.DEVNULL,
         )
-    except subprocess.CalledProcessError as exc:
-        rich.print('❗ [red]The operation could not be completed. See above for the error output ...[/]')
-        sys.exit(exc.returncode)
-    else:
-        return output
+
+    return output
 
 
 SYSTEM = (
@@ -261,7 +270,7 @@ def install_substituter(name: str, substituter: str, pub_key: str) -> None:
 # The `GC_DONT_GC` simply disables the garbage collector used during evaluation of a nix
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
-def nix(args: List[str], is_install: bool = True) -> bytes:
+def nix(args: List[str], is_install: bool = True, exit_on_error: bool = True) -> bytes:
     global CONTAINS_SUBSTITUTERS
     if is_install and not CONTAINS_SUBSTITUTERS:
         install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
@@ -271,6 +280,7 @@ def nix(args: List[str], is_install: bool = True) -> bytes:
         args,
         NIX_SUBSTITUTERS if is_install and not CONTAINS_SUBSTITUTERS and USER_IS_TRUSTED else [],
         True if 'darwin' in SYSTEM else False,
+        exit_on_error=exit_on_error,
     )
 
 
