@@ -235,7 +235,7 @@ def print_substituters_warning() -> None:
             f'   [green]echo "trusted-users = {add_user_to_trusted}" | sudo tee -a /etc/nix/nix.conf && sudo pkill nix-daemon[/]\n\n'
             '   and then re-running the current command.\n\n'
             '   Note: [green]/etc/nix/nix.conf[/] may not exist, in which case, you will first need to run:\n\n'
-            f'   sudo mkdir -p /etc/nix && touch /etc/nix/nix.conf[/]\n\n'
+            f'   [green]sudo mkdir -p /etc/nix && touch /etc/nix/nix.conf[/]\n\n'
         )
     else:
         nix_setting = 'nix.settings.trusted-users' if NIXOS_VERSION.startswith('22') else 'nix.trustedUsers'
