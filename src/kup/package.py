@@ -1,32 +1,37 @@
 from typing import Optional
 
 
-class AvailablePackage:
-    __slots__ = ['repo', 'package']
+class GithubPackage:
+    __slots__ = ['org', 'repo', 'package', 'branch', 'private']
 
-    def __init__(self, repo: str, package: str):
+    def __init__(self, org: str, repo: str, package: str, branch: Optional[str] = None, private: bool = False):
+        self.org = org
         self.repo = repo
         self.package = package
+        self.branch = branch
+        self.private = private
 
 
-class ConcretePackage:
-    __slots__ = ['repo', 'package', 'status', 'version', 'immutable', 'index']
+class ConcretePackage(GithubPackage):
+    __slots__ = ['org', 'repo', 'package', 'status', 'version', 'immutable', 'index', 'branch', 'private']
 
     def __init__(
         self,
+        org: str,
         repo: str,
         package: str,
         status: str,
         version: str = '-',
         immutable: bool = True,
         index: int = -1,
+        branch: Optional[str] = None,
+        private: bool = False,
     ):
-        self.repo = repo
-        self.package = package
         self.version = version
         self.status = status
         self.immutable = immutable
         self.index = index
+        super().__init__(org, repo, package, branch, private)
 
 
 class PackageVersion:
