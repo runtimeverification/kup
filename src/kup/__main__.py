@@ -637,6 +637,9 @@ def main() -> None:
                     rich.print(
                         '❗ [red]Could not find the specified package.[/]\n'
                         '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n'
+                        '   Alternatively, try using the [blue]--github-access-token[/] option to specify a GitHub personal access token.\n'
+                        '   For more information on GitHub personal access tokens, see:\n'
+                        '     https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token'
                     )
                     if not branch:
                         rich.print(
