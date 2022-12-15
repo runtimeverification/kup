@@ -281,8 +281,8 @@ def list_package(package_name: str, show_inputs: bool) -> None:
             inputs = get_package_inputs(package_name, listed_package)
             print_package_tree(inputs, package_name)
         else:
-            if listed_package.private:
-                rich.print('❗ Listing versions is unsupported for private packages.')
+            if listed_package.private and not listed_package.access_token:
+                rich.print('❗ Listing versions is unsupported for private packages accessed over SSH.')
                 return
             tags = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/tags')
             commits = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/commits')
