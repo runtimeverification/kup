@@ -611,7 +611,12 @@ def main() -> None:
 
             try:
                 new_package = GithubPackage(
-                    org, repo, args.package, branch, private=(args.github_access_token is not None), access_token=args.github_access_token
+                    org,
+                    repo,
+                    args.package,
+                    branch,
+                    private=(args.github_access_token is not None),
+                    access_token=args.github_access_token,
                 )
                 path, git_token_options = mk_github_repo_path(new_package)
                 nix(
