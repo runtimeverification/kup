@@ -284,8 +284,13 @@ def list_package(package_name: str, show_inputs: bool) -> None:
             if listed_package.private and not listed_package.access_token:
                 rich.print('❗ Listing versions is unsupported for private packages accessed over SSH.')
                 return
-            tags = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/tags')
-            commits = requests.get(f'https://api.github.com/repos/runtimeverification/{listed_package.repo}/commits')
+            auth = {'Authorization': f'Bearer {listed_package.access_token}'} if listed_package.access_token else {}
+            tags = requests.get(
+                f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/tags', headers=auth
+            )
+            commits = requests.get(
+                f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/commits', headers=auth
+            )
             tagged_releases = {t['commit']['sha']: t for t in tags.json()}
             all_releases = [
                 PackageVersion(
