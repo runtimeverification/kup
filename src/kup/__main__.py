@@ -655,7 +655,7 @@ def main() -> None:
                     ['eval', f'{path}#packages.{SYSTEM}.{args.package}', '--json'] + git_token_options,
                     is_install=False,
                 )
-            config_path = BaseDirectory.load_first_config('kup')
+            config_path = BaseDirectory.save_config_path('kup')
             user_packages_config_path = os.path.join(config_path, 'user_packages.ini')
             config = configparser.ConfigParser()
             if config_path and os.path.exists(user_packages_config_path):
@@ -674,8 +674,6 @@ def main() -> None:
             if new_package.access_token:
                 rich.print(f" ✅ The GitHub access token will be saved to '{str(user_packages_config_path)}'.")
                 config[args.name]['github-access-token'] = new_package.access_token
-
-            config_path = BaseDirectory.save_config_path('kup')
 
             with open(user_packages_config_path, 'w') as configfile:
                 config.write(configfile)
