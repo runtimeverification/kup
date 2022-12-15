@@ -635,10 +635,10 @@ def main() -> None:
                     )
                 except Exception:
                     rich.print(
-                        '❗ [red]Could not find the specified package.[/]\n'
-                        '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n'
+                        '❗ [red]Could not find the specified package.[/]\n\n'
+                        '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n\n'
                         '   Alternatively, try using the [blue]--github-access-token[/] option to specify a GitHub personal access token.\n'
-                        '   For more information on GitHub personal access tokens, see:\n'
+                        '   For more information on GitHub personal access tokens, see:\n\n'
                         '     https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token'
                     )
                     if not branch:
@@ -656,9 +656,10 @@ def main() -> None:
                     is_install=False,
                 )
             config_path = BaseDirectory.load_first_config('kup')
+            user_packages_config_path = os.path.join(config_path, 'user_packages.ini')
             config = configparser.ConfigParser()
-            if config_path and os.path.exists(os.path.join(config_path, 'user_packages.ini')):
-                config.read(os.path.join(config_path, 'user_packages.ini'))
+            if config_path and os.path.exists(user_packages_config_path):
+                config.read(user_packages_config_path)
 
             config[args.name] = {
                 'org': new_package.org,
@@ -671,14 +672,12 @@ def main() -> None:
                 config[args.name]['branch'] = new_package.branch
 
             if new_package.access_token:
-                rich.print(
-                    f" ✅ The GitHub access token will be saved to '{os.path.join(config_path, 'user_packages.ini')}'."
-                )
+                rich.print(f" ✅ The GitHub access token will be saved to '{str(user_packages_config_path)}'.")
                 config[args.name]['github-access-token'] = new_package.access_token
 
             config_path = BaseDirectory.save_config_path('kup')
 
-            with open(os.path.join(config_path, 'user_packages.ini'), 'w') as configfile:
+            with open(user_packages_config_path, 'w') as configfile:
                 config.write(configfile)
 
             rich.print(f" ✅ Successfully added new package '[green]{args.name}[/]'.")
