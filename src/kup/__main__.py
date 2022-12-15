@@ -61,24 +61,28 @@ for config_path in BaseDirectory.load_config_paths('kup'):
                 f'packages.{SYSTEM}.{config[pkg_name]["package"]}',
                 config[pkg_name]['branch'] if 'branch' in config[pkg_name] else None,
                 bool(config[pkg_name]['private']) if 'private' in config[pkg_name] else False,
+                config[pkg_name]['github-access-token'] if 'github-access-token' in config[pkg_name] else None,
             )
 
 packages: Dict[str, ConcretePackage] = {}
 installed_packages: List[str] = []
 
 
-def mk_github_repo_path(package: GithubPackage) -> str:
+def mk_github_repo_path(package: GithubPackage) -> Tuple[str, List[str]]:
 
-    if package.private:
+    if package.private and not package.access_token:
         branch = f'?ref={package.branch}' if package.branch else ''
-        return f'git+https://github.com/{package.org}/{package.repo}/{branch}'
+        # return f'git+https://github.com/{package.org}/{package.repo}/{branch}'
+        return f'git+ssh://git@github.com/{package.org}/{package.repo}.git{branch}', []
     else:
         branch = '/' + package.branch if package.branch else ''
-        return f'github:{package.org}/{package.repo}{branch}'
+        access = ['--option', 'access-tokens', f'github.com={package.access_token}'] if package.access_token else []
+        return f'github:{package.org}/{package.repo}{branch}', access
 
 
 def check_package_version(p: GithubPackage, current_url: str) -> str:
-    result = nix(['flake', 'metadata', mk_github_repo_path(p), '--json'], is_install=False)
+    path, git_token_options = mk_github_repo_path(p)
+    result = nix(['flake', 'metadata', path, '--json'] + git_token_options, is_install=False)
     meta = json.loads(result)
 
     if meta['url'] == current_url:
@@ -137,7 +141,8 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
 
 def get_package_inputs(name: str, package: GithubPackage) -> dict:
     try:
-        result = nix(['flake', 'metadata', mk_github_repo_path(package), '--json'], is_install=False)
+        path, git_token_options = mk_github_repo_path(package)
+        result = nix(['flake', 'metadata', path, '--json'] + git_token_options, is_install=False)
     except Exception:
         return {}
     meta = json.loads(result)
@@ -204,7 +209,7 @@ def reload_packages(load_versions: bool = True) -> None:
     for idx, m in enumerate(manifest):
         if 'attrPath' in m and m['attrPath'] in available_packages_lookup:
             (name, available_package) = available_packages_lookup[m['attrPath']]
-            repo_path = mk_github_repo_path(available_package)
+            repo_path, _ = mk_github_repo_path(available_package)
             if 'originalUrl' in m and m['originalUrl'].startswith(repo_path):
                 if available_package.private:
                     version = m['url'].split('&rev=')[1]
@@ -312,17 +317,18 @@ def list_package(package_name: str, show_inputs: bool) -> None:
         print(table.table)
 
 
-def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> str:
+def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> Tuple[str, List[str]]:
     if version_or_path:
         if os.path.isdir(version_or_path):
-            return os.path.abspath(version_or_path)
+            return os.path.abspath(version_or_path), []
         else:
+            path, git_token_options = mk_github_repo_path(package)
             if package.private:
                 rich.print('⚠️ [yellow]Only commit hashes are currently supported for private packages')
                 rev = '&rev=' if package.branch else '?rev='
-                return mk_github_repo_path(package) + rev + version_or_path
+                return path + rev + version_or_path, git_token_options
             else:
-                return mk_github_repo_path(package) + '/' + version_or_path
+                return path + '/' + version_or_path, git_token_options
     else:
         return mk_github_repo_path(package)
 
@@ -374,18 +380,18 @@ def update_or_install_package(
     version: Optional[str],
     package_overrides: List[List[str]],
 ) -> None:
-    path = mk_path_package(package, version)
+    path, git_token_options = mk_path_package(package, version)
 
     if type(package) is ConcretePackage:
         if package.immutable or version or package_overrides:
             nix(['profile', 'remove', str(package.index)], is_install=False)
             overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
-            nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
+            nix(['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options)
         else:
-            nix(['profile', 'upgrade', str(package.index)])
+            nix(['profile', 'upgrade', str(package.index)] + git_token_options)
     else:
         overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
-        nix(['profile', 'install', f'{path}#{package.package}'] + overrides)
+        nix(['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options)
 
 
 def install_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
@@ -567,6 +573,8 @@ def main() -> None:
     add.add_argument('name', type=str)
     add.add_argument('uri', type=str)
     add.add_argument('package', type=str)
+    add.add_argument('--github-access-token', type=str, help='provide an OAUTH token to connect to a privat repository')
+    add.add_argument('--strict', action='store_true', help='check if the package being added exists')
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
     args = parser.parse_args()
@@ -602,19 +610,21 @@ def main() -> None:
                 branch = None
 
             try:
-                new_package = GithubPackage(org, repo, args.package, branch, private=False)
-
+                new_package = GithubPackage(
+                    org, repo, args.package, branch, private=(args.github_access_token is not None), access_token=args.github_access_token
+                )
+                path, git_token_options = mk_github_repo_path(new_package)
                 nix(
-                    ['flake', 'metadata', mk_github_repo_path(new_package), '--json'],
+                    ['flake', 'metadata', path, '--json'] + git_token_options,
                     is_install=False,
                     exit_on_error=False,
                 )
             except Exception:
                 try:
                     new_package = GithubPackage(org, repo, args.package, branch, private=True)
-
+                    path, git_token_options = mk_github_repo_path(new_package)
                     nix(
-                        ['flake', 'metadata', mk_github_repo_path(new_package), '--json'],
+                        ['flake', 'metadata', path, '--json'] + git_token_options,
                         is_install=False,
                         exit_on_error=False,
                     )
@@ -630,10 +640,13 @@ def main() -> None:
                         )
                     sys.exit(1)
 
-            nix(
-                ['eval', f'{mk_github_repo_path(new_package)}#packages.{SYSTEM}.{args.package}', '--json'],
-                is_install=False,
-            )
+            path, git_token_options = mk_github_repo_path(new_package)
+
+            if args.strict:
+                nix(
+                    ['eval', f'{path}#packages.{SYSTEM}.{args.package}', '--json'] + git_token_options,
+                    is_install=False,
+                )
             config_path = BaseDirectory.load_first_config('kup')
             config = configparser.ConfigParser()
             if config_path and os.path.exists(os.path.join(config_path, 'user_packages.ini')):
@@ -648,6 +661,12 @@ def main() -> None:
 
             if new_package.branch:
                 config[args.name]['branch'] = new_package.branch
+
+            if new_package.access_token:
+                rich.print(
+                    f" ✅ The GitHub access token will be saved to '{os.path.join(config_path, 'user_packages.ini')}'."
+                )
+                config[args.name]['github-access-token'] = new_package.access_token
 
             config_path = BaseDirectory.save_config_path('kup')
 
@@ -667,9 +686,9 @@ def main() -> None:
             )
             return
         temporary_package = available_packages[args.package]
-        path = mk_path_package(temporary_package, args.version)
+        path, git_token_options = mk_path_package(temporary_package, args.version)
         overrides = mk_override_args(args.package, temporary_package, args.override)
-        nix_detach(['shell', f'{path}#{temporary_package.package}'] + overrides)
+        nix_detach(['shell', f'{path}#{temporary_package.package}'] + overrides + git_token_options)
 
 
 if __name__ == '__main__':

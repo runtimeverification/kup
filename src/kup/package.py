@@ -2,18 +2,38 @@ from typing import Optional
 
 
 class GithubPackage:
-    __slots__ = ['org', 'repo', 'package', 'branch', 'private']
+    __slots__ = ['org', 'repo', 'package', 'branch', 'private', 'access_token']
 
-    def __init__(self, org: str, repo: str, package: str, branch: Optional[str] = None, private: bool = False):
+    def __init__(
+        self,
+        org: str,
+        repo: str,
+        package: str,
+        branch: Optional[str] = None,
+        private: bool = False,
+        access_token: Optional[str] = None,
+    ):
         self.org = org
         self.repo = repo
         self.package = package
         self.branch = branch
         self.private = private
+        self.access_token = access_token
 
 
 class ConcretePackage(GithubPackage):
-    __slots__ = ['org', 'repo', 'package', 'status', 'version', 'immutable', 'index', 'branch', 'private']
+    __slots__ = [
+        'org',
+        'repo',
+        'package',
+        'status',
+        'version',
+        'immutable',
+        'index',
+        'branch',
+        'private',
+        'access_token',
+    ]
 
     def __init__(
         self,
@@ -26,12 +46,13 @@ class ConcretePackage(GithubPackage):
         index: int = -1,
         branch: Optional[str] = None,
         private: bool = False,
+        access_token: Optional[str] = None,
     ):
         self.version = version
         self.status = status
         self.immutable = immutable
         self.index = index
-        super().__init__(org, repo, package, branch, private)
+        super().__init__(org, repo, package, branch, private, access_token)
 
 
 class PackageVersion:
