@@ -1,6 +1,7 @@
 import json
 import os
 import pwd
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -65,10 +66,11 @@ USER_IS_ROOT = os.geteuid() == 0
 
 TRUSTED_USERS = []
 CURRENT_SUBSTITUTERS = []
+CURRENT_TRUSTED_PUBLIC_KEYS = []
 
 
 def check_substituters() -> Tuple[bool, bool]:
-    global TRUSTED_USERS, CURRENT_SUBSTITUTERS
+    global TRUSTED_USERS, CURRENT_SUBSTITUTERS, CURRENT_TRUSTED_PUBLIC_KEYS
     try:
         result = nix_raw(['show-config', '--json'], extra_flags=[])
     except Exception:
@@ -79,6 +81,7 @@ def check_substituters() -> Tuple[bool, bool]:
         TRUSTED_USERS = config['trusted-users']['value']
         current_user_is_trusted = USER in TRUSTED_USERS
         CURRENT_SUBSTITUTERS = config['substituters']['value']
+        CURRENT_TRUSTED_PUBLIC_KEYS = config['trusted-public-keys']['value']
         has_all_substituters = 'https://k-framework.cachix.org' in CURRENT_SUBSTITUTERS
         return current_user_is_trusted, has_all_substituters
     except Exception:
@@ -201,7 +204,7 @@ def add_to_keyval(item: Union[Comment, Blank, KeyVal], my_dict: dict[str, str]) 
     return item
 
 
-def install_substituter_non_nixos(conf_file: str, substituter: str, pub_key: str) -> None:
+def install_substituter_non_nixos(conf_file: str, substituter: str, pub_key: str, auth_token: Optional[str]) -> None:
     conf = read_config(conf_file)
     if not contains_key(conf, 'substituters'):
         conf.append(KeyVal('substituters', 'https://cache.nixos.org/'))
@@ -251,7 +254,7 @@ def print_substituters_warning() -> None:
     rich.print('Please select option [1] or [2], or press any key to continue without any changes: ')
 
 
-def install_substituter(name: str, substituter: str, pub_key: str) -> None:
+def install_substituter(name: str, substituter: str, pub_key: str, auth_token: Optional[str]) -> None:
     if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         return
@@ -261,9 +264,9 @@ def install_substituter(name: str, substituter: str, pub_key: str) -> None:
 
     if choice in {'1', '1)'}:
         if NIXOS_VERSION is not None:
-            install_substituter_nixos(name, substituter, pub_key)
+            install_substituter_nixos(name, substituter, pub_key, auth_token)
         else:
-            install_substituter_non_nixos('/etc/nix/nix.conf', substituter, pub_key)
+            install_substituter_non_nixos('/etc/nix/nix.conf', substituter, pub_key, auth_token)
     elif choice in {'2', '2)'}:
         sys.exit(0)
 
@@ -292,4 +295,41 @@ def nix_detach(args: List[str]) -> None:
         my_env['GC_DONT_GC'] = '1'
     nix = subprocess.check_output(['which', 'nix']).decode('utf8').strip()
     extra_flags = NIX_SUBSTITUTERS if not CONTAINS_SUBSTITUTERS and USER_IS_TRUSTED else []
-    os.execve(nix, [nix] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags, my_env)
+    os.execve(
+        nix,
+        [nix] + args + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes'] + extra_flags,
+        my_env,
+    )
+
+
+def get_extra_substituters(path: str, extra_opts: List[str]) -> Tuple[str, str]:
+    if os.path.exists('/tmp/tempflake') and os.path.isdir('/tmp/tempflake'):
+        shutil.rmtree('/tmp/tempflake')
+
+    nix(['flake', 'clone', path, '--dest', '/tmp/tempflake'] + extra_opts, is_install=False)
+
+    nixConfig = json.loads(
+        nix_raw(
+            ['eval', '--impure', '--expr', '(import /tmp/tempflake/flake.nix).nixConfig or {}', '--json'],
+            extra_flags=[],
+        ).decode('utf8')
+    )
+
+    if 'substituters' in nixConfig:
+        substituters = nixConfig['substituters']
+    elif 'extra-substituters' in nixConfig:
+        substituters = nixConfig['extra-substituters']
+    else:
+        substituters = []
+
+    if 'trusted-public-keys' in nixConfig:
+        trusted_public_keys = nixConfig['trusted-public-keys']
+    elif 'extra-trusted-public-keys' in nixConfig:
+        trusted_public_keys = nixConfig['extra-trusted-public-keys']
+    else:
+        trusted_public_keys = []
+
+    # return any substituters and keys not currently found
+    return [s for s in substituters if s not in CURRENT_SUBSTITUTERS], [
+        k for k in trusted_public_keys if k not in CURRENT_TRUSTED_PUBLIC_KEYS
+    ]

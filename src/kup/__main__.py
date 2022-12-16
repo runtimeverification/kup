@@ -21,6 +21,7 @@ from .nix import (
     K_FRAMEWORK_PUBLIC_KEY,
     SYSTEM,
     USER_IS_TRUSTED,
+    get_extra_substituters,
     install_substituter,
     nix,
     nix_detach,
@@ -60,7 +61,7 @@ for config_path in BaseDirectory.load_config_paths('kup'):
                 config[pkg_name]['repo'],
                 f'packages.{SYSTEM}.{config[pkg_name]["package"]}',
                 config[pkg_name]['branch'] if 'branch' in config[pkg_name] else None,
-                bool(config[pkg_name]['private']) if 'private' in config[pkg_name] else False,
+                (config[pkg_name]['ssh+git'].lower() == "true") if 'ssh+git' in config[pkg_name] else False,
                 config[pkg_name]['github-access-token'] if 'github-access-token' in config[pkg_name] else None,
             )
 
@@ -70,7 +71,7 @@ installed_packages: List[str] = []
 
 def mk_github_repo_path(package: GithubPackage) -> Tuple[str, List[str]]:
 
-    if package.private and not package.access_token:
+    if package.ssh_git:
         branch = f'?ref={package.branch}' if package.branch else ''
         # return f'git+https://github.com/{package.org}/{package.repo}/{branch}'
         return f'git+ssh://git@github.com/{package.org}/{package.repo}.git{branch}', []
@@ -211,7 +212,7 @@ def reload_packages(load_versions: bool = True) -> None:
             (name, available_package) = available_packages_lookup[m['attrPath']]
             repo_path, _ = mk_github_repo_path(available_package)
             if 'originalUrl' in m and m['originalUrl'].startswith(repo_path):
-                if available_package.private:
+                if available_package.ssh_git:
                     version = m['url'].split('&rev=')[1]
                     immutable = 'rev=' in m['originalUrl'] or 'ref=' in m['originalUrl']
                 else:
@@ -231,7 +232,7 @@ def reload_packages(load_versions: bool = True) -> None:
                     immutable,
                     idx,
                     available_package.branch,
-                    available_package.private,
+                    available_package.ssh_git,
                 )
             else:
                 packages[name] = ConcretePackage(
@@ -241,7 +242,7 @@ def reload_packages(load_versions: bool = True) -> None:
                     LOCAL,
                     index=idx,
                     branch=available_package.branch,
-                    private=available_package.private,
+                    ssh_git=available_package.ssh_git,
                 )
 
     installed_packages = list(packages.keys())
@@ -255,7 +256,7 @@ def reload_packages(load_versions: bool = True) -> None:
                 AVAILABLE,
                 '',
                 branch=available_package.branch,
-                private=available_package.private,
+                ssh_git=available_package.ssh_git,
             )
 
 
@@ -281,13 +282,13 @@ def list_package(package_name: str, show_inputs: bool) -> None:
             inputs = get_package_inputs(package_name, listed_package)
             print_package_tree(inputs, package_name)
         else:
-            if listed_package.private and not listed_package.access_token:
-                rich.print('❗ Listing versions is unsupported for private packages accessed over SSH.')
-                return
             auth = {'Authorization': f'Bearer {listed_package.access_token}'} if listed_package.access_token else {}
             tags = requests.get(
                 f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/tags', headers=auth
             )
+            if not tags.ok:
+                rich.print('❗ Listing versions is unsupported for private packages accessed over SSH.')
+                return
             commits = requests.get(
                 f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/commits', headers=auth
             )
@@ -328,8 +329,8 @@ def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> T
             return os.path.abspath(version_or_path), []
         else:
             path, git_token_options = mk_github_repo_path(package)
-            if package.private:
-                rich.print('⚠️ [yellow]Only commit hashes are currently supported for private packages')
+            if package.ssh_git:
+                rich.print('⚠️ [yellow]Only commit hashes are currently supported for private packages accessed over SSH.')
                 rev = '&rev=' if package.branch else '?rev='
                 return path + rev + version_or_path, git_token_options
             else:
@@ -480,6 +481,128 @@ def remove_package(package_name: str) -> None:
     package = packages[package_name]
     nix(['profile', 'remove', str(package.index)], is_install=False)
 
+def add_new_package(name: str, uri: str, package: str, github_access_token: Optional[str], cache_access_tokens: Dict[str, str], strict: bool) -> None:
+    print(cache_access_tokens)
+    if '/' in uri:
+        org, rest = uri.split('/', 1)
+        if '/' in rest:
+            repo, branch = rest.split('/', 1)
+        else:
+            repo = rest
+            branch = None
+
+        try:
+            new_package = GithubPackage(
+                org,
+                repo,
+                package,
+                branch,
+                ssh_git=False,
+                access_token=github_access_token,
+            )
+            path, git_token_options = mk_github_repo_path(new_package)
+            nix(
+                ['flake', 'metadata', path, '--json'] + git_token_options,
+                is_install=False,
+                exit_on_error=False,
+            )
+        except Exception:
+            try:
+                print("trying over SSH")
+                new_package = GithubPackage(org, repo, args.package, branch, ssh_git=True)
+                path, git_token_options = mk_github_repo_path(new_package)
+                nix(
+                    ['flake', 'metadata', path, '--json'] + git_token_options,
+                    is_install=False,
+                    exit_on_error=False,
+                )
+            except Exception:
+                rich.print(
+                    '❗ [red]Could not find the specified package.[/]\n\n'
+                    '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n\n'
+                    '   Alternatively, try using the [blue]--github-access-token[/] option to specify a GitHub personal access token.\n'
+                    '   For more information on GitHub personal access tokens, see:\n\n'
+                    '     https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token'
+                )
+                if not branch:
+                    rich.print(
+                        '   If your repository has a [blue]main[/] branch instead of [blue]master[/], try\n\n'
+                        f'     [green] kup add {args.name} {args.uri}/main {args.package}\n'
+                    )
+                sys.exit(1)
+
+        path, git_token_options = mk_github_repo_path(new_package)
+
+        substituters, trusted_public_keys = get_extra_substituters(path, git_token_options)
+
+        for s in substituters:
+            
+
+            if s in cache_access_tokens:
+                rich.print(
+                    f'ℹ️  Adding {s} binary cache, specified by this package.\n'
+                )
+                access_token = cache_access_tokens[s]
+            else:
+                rich.print(
+                    f"ℹ️  Adding {s} binary cache, specified by this package, but an access token hasn't been specified.\n"
+                    'Please type in the auth token for this cache and press [enter] (if the cache is public leave blank)'
+                )
+
+                access_token = input()
+
+            public = access_token.strip() == ''
+            print(public)
+
+            if "cachix.org" in s:
+                cache_name = s.replace("https://", "").replace("https://", "").replace(".cachix.org", "").replace("/", "").strip()
+                auth = {'Authorization': f'Bearer {access_token}'} if access_token else {}
+                cache_meta = requests.get(
+                    f'https://app.cachix.org/api/v1/cache/{cache_name}', headers=auth
+                )
+                if cache_meta.ok:
+                    public = cache_meta.json()['isPublic']
+                else:
+                    rich.print(
+                        f"❗ [red]Could not acces '[blue]{cache_name}[/]' cachix cache.[/]\n"
+                    )
+                    return
+                
+
+
+
+        if strict:
+            nix(
+                ['eval', f'{path}#packages.{SYSTEM}.{args.package}', '--json'] + git_token_options,
+                is_install=False,
+            )
+        config_path = BaseDirectory.save_config_path('kup')
+        user_packages_config_path = os.path.join(config_path, 'user_packages.ini')
+        config = configparser.ConfigParser()
+        if config_path and os.path.exists(user_packages_config_path):
+            config.read(user_packages_config_path)
+
+        config[name] = {
+            'org': new_package.org,
+            'repo': new_package.repo,
+            'package': new_package.package,
+            'ssh+git': str(new_package.ssh_git),
+        }
+
+        if new_package.branch:
+            config[name]['branch'] = new_package.branch
+
+        if new_package.access_token:
+            rich.print(f"✅ The GitHub access token will be saved to {user_packages_config_path}.")
+            config[name]['github-access-token'] = new_package.access_token
+
+        with open(user_packages_config_path, 'w') as configfile:
+            config.write(configfile)
+
+        rich.print(f"✅ Successfully added new package '[green]{name}[/]'. Configuration written to {user_packages_config_path}.")
+
+    else:
+        rich.print(f"❗ The URI '[red]{uri}[/]' is invalid.\n" "   The correct format is '[green]org/repo[/]'.")
 
 def print_help(subcommand: str, parser: ArgumentParser) -> None:
     parser.print_help()
@@ -578,7 +701,8 @@ def main() -> None:
     add.add_argument('name', type=str)
     add.add_argument('uri', type=str)
     add.add_argument('package', type=str)
-    add.add_argument('--github-access-token', type=str, help='provide an OAUTH token to connect to a privat repository')
+    add.add_argument('--github-access-token', type=str, help='provide an OAUTH token to connect to a private repository')
+    add.add_argument('--cache-access-token', type=str, nargs=2, action='append', help='provide the url and access token to access a private Nix cache')
     add.add_argument('--strict', action='store_true', help='check if the package being added exists')
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
@@ -606,87 +730,7 @@ def main() -> None:
     elif args.command == 'remove':
         remove_package(args.package)
     elif args.command == 'add':
-        if '/' in args.uri:
-            org, rest = args.uri.split('/', 1)
-            if '/' in rest:
-                repo, branch = rest.split('/', 1)
-            else:
-                repo = rest
-                branch = None
-
-            try:
-                new_package = GithubPackage(
-                    org,
-                    repo,
-                    args.package,
-                    branch,
-                    private=(args.github_access_token is not None),
-                    access_token=args.github_access_token,
-                )
-                path, git_token_options = mk_github_repo_path(new_package)
-                nix(
-                    ['flake', 'metadata', path, '--json'] + git_token_options,
-                    is_install=False,
-                    exit_on_error=False,
-                )
-            except Exception:
-                try:
-                    new_package = GithubPackage(org, repo, args.package, branch, private=True)
-                    path, git_token_options = mk_github_repo_path(new_package)
-                    nix(
-                        ['flake', 'metadata', path, '--json'] + git_token_options,
-                        is_install=False,
-                        exit_on_error=False,
-                    )
-                except Exception:
-                    rich.print(
-                        '❗ [red]Could not find the specified package.[/]\n\n'
-                        '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n\n'
-                        '   Alternatively, try using the [blue]--github-access-token[/] option to specify a GitHub personal access token.\n'
-                        '   For more information on GitHub personal access tokens, see:\n\n'
-                        '     https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token'
-                    )
-                    if not branch:
-                        rich.print(
-                            '   If your repository has a [blue]main[/] branch instead of [blue]master[/], try\n\n'
-                            f'     [green] kup add {args.name} {args.uri}/main {args.package}\n'
-                        )
-                    sys.exit(1)
-
-            path, git_token_options = mk_github_repo_path(new_package)
-
-            if args.strict:
-                nix(
-                    ['eval', f'{path}#packages.{SYSTEM}.{args.package}', '--json'] + git_token_options,
-                    is_install=False,
-                )
-            config_path = BaseDirectory.save_config_path('kup')
-            user_packages_config_path = os.path.join(config_path, 'user_packages.ini')
-            config = configparser.ConfigParser()
-            if config_path and os.path.exists(user_packages_config_path):
-                config.read(user_packages_config_path)
-
-            config[args.name] = {
-                'org': new_package.org,
-                'repo': new_package.repo,
-                'package': new_package.package,
-                'private': str(new_package.private),
-            }
-
-            if new_package.branch:
-                config[args.name]['branch'] = new_package.branch
-
-            if new_package.access_token:
-                rich.print(f" ✅ The GitHub access token will be saved to '{str(user_packages_config_path)}'.")
-                config[args.name]['github-access-token'] = new_package.access_token
-
-            with open(user_packages_config_path, 'w') as configfile:
-                config.write(configfile)
-
-            rich.print(f" ✅ Successfully added new package '[green]{args.name}[/]'.")
-
-        else:
-            rich.print(f"❗ The URI '[red]{args.uri}[/]' is invalid.\n" "   The correct format is '[green]org/repo[/]'.")
+        add_new_package(args.name, args.uri, args.package, args.github_access_token, {repo: key for [repo,key] in args.cache_access_token}, args.strict)
     elif args.command == 'shell':
         reload_packages(load_versions=False)
         if args.package not in available_packages.keys():
