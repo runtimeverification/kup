@@ -98,22 +98,24 @@ let
   imports = lib.mapAttrsToList toImport (lib.filterAttrs filterCaches (builtins.readDir folder));
 in {
   inherit imports;
-  nix.binaryCaches = ["https://cache.nixos.org/"];
+  nix.settings.substituters = ["https://cache.nixos.org/"];
 }
 """
 
 
-def install_substituter_nixos(name: str, substituter: str, pub_key: str) -> None:
+def install_substituter_nixos(name: str, substituter: str, pub_key: str, auth_token: Optional[str] = None) -> None:
     nixos_path = '/etc/nixos'
 
     cache_module = f"""{{
   nix = {{
-    binaryCaches = [
-      "{substituter}"
-    ];
-    binaryCachePublicKeys = [
-      "{pub_key}"
-    ];
+    settings = {{
+      substituters = [
+        "{substituter}"
+      ];
+      trusted-public-keys = [
+        "{pub_key}"
+      ];
+    }};
   }};
 }}
 """
