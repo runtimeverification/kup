@@ -13,18 +13,22 @@ from rich.markdown import Markdown
 from rich.theme import Theme
 from rich.tree import Tree
 from terminaltables import SingleTable  # type: ignore
+from tinynetrc import Netrc
 from xdg import BaseDirectory
 
 from .nix import (
-    CONTAINS_SUBSTITUTERS,
+    CONTAINS_DEFAULT_SUBSTITUTER,
+    CURRENT_NETRC_FILE,
     K_FRAMEWORK_CACHE,
     K_FRAMEWORK_PUBLIC_KEY,
     SYSTEM,
     USER_IS_TRUSTED,
-    get_extra_substituters,
+    ask_install_substituter,
+    get_extra_substituters_from_flake,
     install_substituter,
     nix,
     nix_detach,
+    set_netrc_file,
 )
 from .package import ConcretePackage, GithubPackage, PackageVersion
 
@@ -36,7 +40,6 @@ INSTALLED = '🟢 \033[92minstalled\033[0m'
 AVAILABLE = '🔵 \033[94mavailable\033[0m'
 UPDATE = '🟠 \033[93mnewer version available\033[0m'
 LOCAL = '\033[3mlocal checkout\033[0m'
-
 
 available_packages: Dict[str, GithubPackage] = {
     'kup': GithubPackage('runtimeverification', 'kup', f'packages.{SYSTEM}.kup'),
@@ -56,13 +59,26 @@ for config_path in BaseDirectory.load_config_paths('kup'):
 
         config.read(os.path.join(config_path, 'user_packages.ini'))
         for pkg_name in config.sections():
+            substituters = (
+                [s.strip() for s in config[pkg_name]['substituters'].split(' ')]
+                if 'substituters' in config[pkg_name]
+                else []
+            )
+            public_keys = (
+                [k.strip() for k in config[pkg_name]['public_keys'].split(' ')]
+                if 'public_keys' in config[pkg_name]
+                else []
+            )
+
             available_packages[pkg_name] = GithubPackage(
                 config[pkg_name]['org'],
                 config[pkg_name]['repo'],
                 f'packages.{SYSTEM}.{config[pkg_name]["package"]}',
                 config[pkg_name]['branch'] if 'branch' in config[pkg_name] else None,
-                (config[pkg_name]['ssh+git'].lower() == "true") if 'ssh+git' in config[pkg_name] else False,
+                (config[pkg_name]['ssh+git'].lower() == 'true') if 'ssh+git' in config[pkg_name] else False,
                 config[pkg_name]['github-access-token'] if 'github-access-token' in config[pkg_name] else None,
+                substituters,
+                public_keys,
             )
 
 packages: Dict[str, ConcretePackage] = {}
@@ -330,7 +346,9 @@ def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> T
         else:
             path, git_token_options = mk_github_repo_path(package)
             if package.ssh_git:
-                rich.print('⚠️ [yellow]Only commit hashes are currently supported for private packages accessed over SSH.')
+                rich.print(
+                    '⚠️ [yellow]Only commit hashes are currently supported for private packages accessed over SSH.'
+                )
                 rev = '&rev=' if package.branch else '?rev='
                 return path + rev + version_or_path, git_token_options
             else:
@@ -392,12 +410,24 @@ def update_or_install_package(
         if package.immutable or version or package_overrides:
             nix(['profile', 'remove', str(package.index)], is_install=False)
             overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
-            nix(['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options)
+            nix(
+                ['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options,
+                extra_substituters=package.substituters,
+                extra_public_keys=package.public_keys,
+            )
         else:
-            nix(['profile', 'upgrade', str(package.index)] + git_token_options)
+            nix(
+                ['profile', 'upgrade', str(package.index)] + git_token_options,
+                extra_substituters=package.substituters,
+                extra_public_keys=package.public_keys,
+            )
     else:
         overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
-        nix(['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options)
+        nix(
+            ['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options,
+            extra_substituters=package.substituters,
+            extra_public_keys=package.public_keys,
+        )
 
 
 def install_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
@@ -481,8 +511,44 @@ def remove_package(package_name: str) -> None:
     package = packages[package_name]
     nix(['profile', 'remove', str(package.index)], is_install=False)
 
-def add_new_package(name: str, uri: str, package: str, github_access_token: Optional[str], cache_access_tokens: Dict[str, str], strict: bool) -> None:
-    print(cache_access_tokens)
+
+def ping_nix_store(url: str, access_token: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+    auth = {'Authorization': f'Bearer {access_token}'} if access_token else {}
+
+    if 'cachix.org' in url:
+        cache_name = (
+            url.replace('https://', '').replace('http://', '').replace('.cachix.org', '').replace('/', '').strip()
+        )
+        cache_meta = requests.get(f'https://app.cachix.org/api/v1/cache/{cache_name}', headers=auth)
+        if cache_meta.ok:
+            res = cache_meta.json()
+            reachable = True
+            valid_token = None if res['isPublic'] else access_token
+        else:
+            reachable = False
+            valid_token = None
+    else:
+        cache_meta = requests.get(f'{url}/nix-cache-info', headers=auth)
+        reachable = cache_meta.ok
+        valid_token = access_token if reachable else None
+
+    return reachable, valid_token
+
+
+def check_github_api_accessible(org: str, repo: str, access_token: Optional[str]) -> bool:
+    auth = {'Authorization': f'Bearer {access_token}'} if access_token else {}
+    commits = requests.get(f'https://api.github.com/repos/{org}/{repo}/commits', headers=auth)
+    return commits.ok
+
+
+def add_new_package(
+    name: str,
+    uri: str,
+    package: str,
+    github_access_token: Optional[str],
+    cache_access_tokens: Dict[str, str],
+    strict: bool,
+) -> None:
     if '/' in uri:
         org, rest = uri.split('/', 1)
         if '/' in rest:
@@ -491,91 +557,50 @@ def add_new_package(name: str, uri: str, package: str, github_access_token: Opti
             repo = rest
             branch = None
 
+        github_api_accessible = check_github_api_accessible(org, repo, github_access_token)
         try:
-            new_package = GithubPackage(
-                org,
-                repo,
-                package,
-                branch,
-                ssh_git=False,
-                access_token=github_access_token,
-            )
-            path, git_token_options = mk_github_repo_path(new_package)
-            nix(
-                ['flake', 'metadata', path, '--json'] + git_token_options,
-                is_install=False,
-                exit_on_error=False,
-            )
-        except Exception:
-            try:
-                print("trying over SSH")
-                new_package = GithubPackage(org, repo, args.package, branch, ssh_git=True)
+            if github_api_accessible:
+                new_package = GithubPackage(
+                    org,
+                    repo,
+                    package,
+                    branch,
+                    ssh_git=False,
+                    access_token=github_access_token,
+                )
                 path, git_token_options = mk_github_repo_path(new_package)
                 nix(
                     ['flake', 'metadata', path, '--json'] + git_token_options,
                     is_install=False,
                     exit_on_error=False,
                 )
-            except Exception:
-                rich.print(
-                    '❗ [red]Could not find the specified package.[/]\n\n'
-                    '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n\n'
-                    '   Alternatively, try using the [blue]--github-access-token[/] option to specify a GitHub personal access token.\n'
-                    '   For more information on GitHub personal access tokens, see:\n\n'
-                    '     https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token'
+            else:
+                print('Detected a private repository without a GitHub access token, using git+ssh...')
+                new_package = GithubPackage(org, repo, package, branch, ssh_git=True)
+                path, git_token_options = mk_github_repo_path(new_package)
+                nix(
+                    ['flake', 'metadata', path, '--json'] + git_token_options,
+                    is_install=False,
+                    exit_on_error=False,
                 )
-                if not branch:
-                    rich.print(
-                        '   If your repository has a [blue]main[/] branch instead of [blue]master[/], try\n\n'
-                        f'     [green] kup add {args.name} {args.uri}/main {args.package}\n'
-                    )
-                sys.exit(1)
+        except Exception:
+            rich.print(
+                '❗ [red]Could not find the specified package.[/]\n\n'
+                '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n\n'
+                '   Alternatively, try using the [blue]--github-access-token[/] option to specify a GitHub personal access token.\n'
+                '   For more information on GitHub personal access tokens, see:\n\n'
+                '     https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token'
+            )
+            if not branch:
+                rich.print(
+                    '   If your repository has a [blue]main[/] branch instead of [blue]master[/], try\n\n'
+                    f'     [green] kup add {name} {uri}/main {package}\n'
+                )
+            sys.exit(1)
 
         path, git_token_options = mk_github_repo_path(new_package)
 
-        substituters, trusted_public_keys = get_extra_substituters(path, git_token_options)
-
-        for s in substituters:
-            
-
-            if s in cache_access_tokens:
-                rich.print(
-                    f'ℹ️  Adding {s} binary cache, specified by this package.\n'
-                )
-                access_token = cache_access_tokens[s]
-            else:
-                rich.print(
-                    f"ℹ️  Adding {s} binary cache, specified by this package, but an access token hasn't been specified.\n"
-                    'Please type in the auth token for this cache and press [enter] (if the cache is public leave blank)'
-                )
-
-                access_token = input()
-
-            public = access_token.strip() == ''
-            print(public)
-
-            if "cachix.org" in s:
-                cache_name = s.replace("https://", "").replace("https://", "").replace(".cachix.org", "").replace("/", "").strip()
-                auth = {'Authorization': f'Bearer {access_token}'} if access_token else {}
-                cache_meta = requests.get(
-                    f'https://app.cachix.org/api/v1/cache/{cache_name}', headers=auth
-                )
-                if cache_meta.ok:
-                    public = cache_meta.json()['isPublic']
-                else:
-                    rich.print(
-                        f"❗ [red]Could not acces '[blue]{cache_name}[/]' cachix cache.[/]\n"
-                    )
-                    return
-                
-
-
-
-        if strict:
-            nix(
-                ['eval', f'{path}#packages.{SYSTEM}.{args.package}', '--json'] + git_token_options,
-                is_install=False,
-            )
+        substituters, trusted_public_keys = get_extra_substituters_from_flake(path, git_token_options)
         config_path = BaseDirectory.save_config_path('kup')
         user_packages_config_path = os.path.join(config_path, 'user_packages.ini')
         config = configparser.ConfigParser()
@@ -587,22 +612,68 @@ def add_new_package(name: str, uri: str, package: str, github_access_token: Opti
             'repo': new_package.repo,
             'package': new_package.package,
             'ssh+git': str(new_package.ssh_git),
+            'substituters': ' '.join(substituters),
+            'public_keys': ' '.join(trusted_public_keys),
         }
 
         if new_package.branch:
             config[name]['branch'] = new_package.branch
 
         if new_package.access_token:
-            rich.print(f"✅ The GitHub access token will be saved to {user_packages_config_path}.")
+            rich.print(f'✅ The GitHub access token will be saved to {user_packages_config_path}.')
             config[name]['github-access-token'] = new_package.access_token
+
+        for (s, pub_key) in zip(substituters, trusted_public_keys):
+            reachable, access_token = ping_nix_store(s, cache_access_tokens.get(s, None))
+
+            if not reachable:
+                if s in cache_access_tokens:
+                    rich.print(f"❗ [red]Could not access '[blue]{s}[/]' cache.[/]\n")
+                    return
+                # case when the cache is private but an access token has not been provided as an argument
+                else:
+                    rich.print(
+                        f'ℹ️  The {s} binary cache appears to be private.\n'
+                        'Please provide an auth token for this cache and press [enter]'
+                    )
+                    access_token = input()
+                    reachable, access_token = ping_nix_store(s, access_token)
+                    if not reachable:
+                        rich.print(f"❗ [red]Could not access '[blue]{s}[/]' cache.[/]\n")
+                        return
+            if access_token:
+                netrc_file = CURRENT_NETRC_FILE
+                if not netrc_file:
+                    netrc_file = os.path.join(config_path, 'netrc')
+                    set_netrc_file(netrc_file)
+                netrc = Netrc(netrc_file)
+                s_stripped = s.replace('https://', '').replace('http://', '').replace('/', '').strip()
+                netrc[s_stripped]['password'] = access_token
+                netrc.save()
+                rich.print(f'✅ The access token for {s} was saved to {netrc_file}.')
+
+            s_name = s.replace('https://', '').replace('http://', '').replace('/', '').strip()
+
+            install_substituter(s_name, s, pub_key)
+
+        if strict:
+            nix(
+                ['eval', f'{path}#packages.{SYSTEM}.{package}', '--json'] + git_token_options,
+                is_install=False,
+                extra_substituters=substituters,
+                extra_public_keys=trusted_public_keys,
+            )
 
         with open(user_packages_config_path, 'w') as configfile:
             config.write(configfile)
 
-        rich.print(f"✅ Successfully added new package '[green]{name}[/]'. Configuration written to {user_packages_config_path}.")
+        rich.print(
+            f"✅ Successfully added new package '[green]{name}[/]'. Configuration written to {user_packages_config_path}."
+        )
 
     else:
         rich.print(f"❗ The URI '[red]{uri}[/]' is invalid.\n" "   The correct format is '[green]org/repo[/]'.")
+
 
 def print_help(subcommand: str, parser: ArgumentParser) -> None:
     parser.print_help()
@@ -701,8 +772,16 @@ def main() -> None:
     add.add_argument('name', type=str)
     add.add_argument('uri', type=str)
     add.add_argument('package', type=str)
-    add.add_argument('--github-access-token', type=str, help='provide an OAUTH token to connect to a private repository')
-    add.add_argument('--cache-access-token', type=str, nargs=2, action='append', help='provide the url and access token to access a private Nix cache')
+    add.add_argument(
+        '--github-access-token', type=str, help='provide an OAUTH token to connect to a private repository'
+    )
+    add.add_argument(
+        '--cache-access-token',
+        type=str,
+        nargs=2,
+        action='append',
+        help='provide the url and access token to access a private Nix cache',
+    )
     add.add_argument('--strict', action='store_true', help='check if the package being added exists')
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
@@ -715,14 +794,14 @@ def main() -> None:
         list_package(args.package, args.inputs)
     elif args.command == 'doctor':
         trusted_check = '🟢' if USER_IS_TRUSTED else '🟠'
-        substituter_check = '🟢' if CONTAINS_SUBSTITUTERS else ('🟠' if USER_IS_TRUSTED else '🔴')
+        substituter_check = '🟢' if CONTAINS_DEFAULT_SUBSTITUTER else ('🟢' if USER_IS_TRUSTED else '🔴')
         rich.print(
             f'\nUser is trusted                      {trusted_check}\n'
             f'K-framework substituter is set up    {substituter_check}\n'
         )
-        if not USER_IS_TRUSTED and not CONTAINS_SUBSTITUTERS:
+        if not USER_IS_TRUSTED and not CONTAINS_DEFAULT_SUBSTITUTER:
             print()
-            install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
+            ask_install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
     elif args.command == 'install':
         install_package(args.package, args.version, args.override)
     elif args.command == 'update':
@@ -730,7 +809,14 @@ def main() -> None:
     elif args.command == 'remove':
         remove_package(args.package)
     elif args.command == 'add':
-        add_new_package(args.name, args.uri, args.package, args.github_access_token, {repo: key for [repo,key] in args.cache_access_token}, args.strict)
+        add_new_package(
+            args.name,
+            args.uri,
+            args.package,
+            args.github_access_token,
+            {repo: key for [repo, key] in args.cache_access_token} if args.cache_access_token else {},
+            args.strict,
+        )
     elif args.command == 'shell':
         reload_packages(load_versions=False)
         if args.package not in available_packages.keys():
@@ -742,7 +828,11 @@ def main() -> None:
         temporary_package = available_packages[args.package]
         path, git_token_options = mk_path_package(temporary_package, args.version)
         overrides = mk_override_args(args.package, temporary_package, args.override)
-        nix_detach(['shell', f'{path}#{temporary_package.package}'] + overrides + git_token_options)
+        nix_detach(
+            ['shell', f'{path}#{temporary_package.package}'] + overrides + git_token_options,
+            extra_substituters=temporary_package.substituters,
+            extra_public_keys=temporary_package.public_keys,
+        )
 
 
 if __name__ == '__main__':
