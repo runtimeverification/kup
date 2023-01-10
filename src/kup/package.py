@@ -2,7 +2,7 @@ from typing import Optional
 
 
 class GithubPackage:
-    __slots__ = ['org', 'repo', 'package', 'branch', 'private', 'access_token']
+    __slots__ = ['org', 'repo', 'package', 'branch', 'ssh_git', 'access_token', 'substituters', 'public_keys']
 
     def __init__(
         self,
@@ -10,15 +10,19 @@ class GithubPackage:
         repo: str,
         package: str,
         branch: Optional[str] = None,
-        private: bool = False,
+        ssh_git: bool = False,
         access_token: Optional[str] = None,
+        substituters: Optional[list[str]] = None,
+        public_keys: Optional[list[str]] = None,
     ):
         self.org = org
         self.repo = repo
         self.package = package
         self.branch = branch
-        self.private = private
+        self.ssh_git = ssh_git
         self.access_token = access_token
+        self.substituters = substituters if substituters is not None else []
+        self.public_keys = public_keys if public_keys is not None else []
 
 
 class ConcretePackage(GithubPackage):
@@ -31,8 +35,10 @@ class ConcretePackage(GithubPackage):
         'immutable',
         'index',
         'branch',
-        'private',
+        'ssh_git',
         'access_token',
+        'substituters',
+        'public_keys',
     ]
 
     def __init__(
@@ -45,14 +51,16 @@ class ConcretePackage(GithubPackage):
         immutable: bool = True,
         index: int = -1,
         branch: Optional[str] = None,
-        private: bool = False,
+        ssh_git: bool = False,
         access_token: Optional[str] = None,
+        substituters: Optional[list[str]] = None,
+        public_keys: Optional[list[str]] = None,
     ):
         self.version = version
         self.status = status
         self.immutable = immutable
         self.index = index
-        super().__init__(org, repo, package, branch, private, access_token)
+        super().__init__(org, repo, package, branch, ssh_git, access_token, substituters, public_keys)
 
 
 class PackageVersion:
