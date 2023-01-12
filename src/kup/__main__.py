@@ -341,6 +341,16 @@ def list_package(package_name: str, show_inputs: bool) -> None:
         print(table.table)
 
 
+def is_sha1(maybe_sha: str) -> bool:
+    if len(maybe_sha) != 40:
+        return False
+    try:
+        int(maybe_sha, 16)
+    except ValueError:
+        return False
+    return True
+
+
 def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> Tuple[str, List[str]]:
     if version_or_path:
         if os.path.isdir(version_or_path):
@@ -348,9 +358,10 @@ def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> T
         else:
             path, git_token_options = mk_github_repo_path(package)
             if package.ssh_git:
-                rich.print(
-                    '⚠️ [yellow]Only commit hashes are currently supported for private packages accessed over SSH.'
-                )
+                if not is_sha1(version_or_path):
+                    rich.print(
+                        '⚠️  [yellow]Only commit hashes are currently supported for private packages accessed over SSH.'
+                    )
                 rev = '&rev=' if package.branch else '?rev='
                 return path + rev + version_or_path, git_token_options
             else:
