@@ -125,7 +125,7 @@ in {
 """
 
 
-def install_substituters_nixos(name: str, substituters: str, pub_keys: str) -> None:
+def install_substituters_nixos(name: str, substituters: List[str], pub_keys: List[str]) -> None:
     nixos_path = '/etc/nixos'
     substituters_str = ' '.join(substituters)
     pub_keys_str = ' '.join(pub_keys)
@@ -218,7 +218,9 @@ def contains_key(config: List[Union[Comment, Blank, KeyVal]], key: str) -> bool:
     return False
 
 
-def append_to_config(config: List[Union[Comment, Blank, KeyVal]], my_dict: dict[str, str]) -> List[Union[Comment, Blank, KeyVal]]:
+def append_to_config(
+    config: List[Union[Comment, Blank, KeyVal]], my_dict: dict[str, str]
+) -> List[Union[Comment, Blank, KeyVal]]:
     for n, item in enumerate(config):
         if isinstance(item, KeyVal):
             if item.key in my_dict.keys():
@@ -231,7 +233,9 @@ def install_substituters_non_nixos(conf_file: str, substituters: List[str], pub_
     if not contains_key(conf, 'substituters'):
         conf.append(KeyVal('substituters', 'https://cache.nixos.org/'))
         conf.append(KeyVal('trusted-public-keys', 'cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY='))
-    new_conf = append_to_config(conf, {'substituters': ' '.join(substituters), 'trusted-public-keys': ' '.join(pub_keys)})
+    new_conf = append_to_config(
+        conf, {'substituters': ' '.join(substituters), 'trusted-public-keys': ' '.join(pub_keys)}
+    )
     write_config('/tmp/nix.conf', new_conf)
 
     if os.path.exists(conf_file):
@@ -276,7 +280,7 @@ def print_substituters_warning() -> None:
     rich.print('Please select option [1] or [2], or press any key to continue without any changes: ')
 
 
-def install_substituters(name: str, substituters: List[str], pub_key: List[str]) -> None:
+def install_substituters(name: str, substituters: List[str], pub_keys: List[str]) -> None:
     if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         return
@@ -287,7 +291,7 @@ def install_substituters(name: str, substituters: List[str], pub_key: List[str])
         install_substituters_non_nixos('/etc/nix/nix.conf', substituters, pub_keys)
 
 
-def ask_install_substituters(name: str, substituters: List[str], pub_key: List[str]) -> None:
+def ask_install_substituters(name: str, substituters: List[str], pub_keys: List[str]) -> None:
     if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         return

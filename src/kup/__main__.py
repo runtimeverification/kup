@@ -629,7 +629,8 @@ def add_new_package(
         trusted_public_keys_to_add = []
 
         for (s, pub_key) in zip(substituters, trusted_public_keys):
-            if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS: pass
+            if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS:
+                pass
 
             reachable, access_token = ping_nix_store(s, cache_access_tokens.get(s, None))
 
@@ -661,7 +662,7 @@ def add_new_package(
 
             substituters_to_add.append(s)
             trusted_public_keys_to_add.append(pub_key)
-        
+
         install_substituters(name, substituters_to_add, trusted_public_keys_to_add)
 
         if strict:
