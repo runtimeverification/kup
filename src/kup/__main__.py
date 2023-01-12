@@ -654,6 +654,8 @@ def add_new_package(
                 if not netrc_file:
                     netrc_file = os.path.join(config_path, 'netrc')
                     set_netrc_file(netrc_file)
+                    with open(netrc_file, 'a'):
+                        os.utime(netrc_file, None)
                 netrc = Netrc(netrc_file)
                 s_stripped = s.replace('https://', '').replace('http://', '').replace('/', '').strip()
                 netrc[s_stripped]['password'] = access_token
