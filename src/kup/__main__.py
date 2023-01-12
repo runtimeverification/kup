@@ -19,13 +19,15 @@ from xdg import BaseDirectory
 from .nix import (
     CONTAINS_DEFAULT_SUBSTITUTER,
     CURRENT_NETRC_FILE,
+    CURRENT_SUBSTITUTERS,
+    CURRENT_TRUSTED_PUBLIC_KEYS,
     K_FRAMEWORK_CACHE,
     K_FRAMEWORK_PUBLIC_KEY,
     SYSTEM,
     USER_IS_TRUSTED,
-    ask_install_substituter,
+    ask_install_substituters,
     get_extra_substituters_from_flake,
-    install_substituter,
+    install_substituters,
     nix,
     nix_detach,
     set_netrc_file,
@@ -623,7 +625,12 @@ def add_new_package(
             rich.print(f'✅ The GitHub access token will be saved to {user_packages_config_path}.')
             config[name]['github-access-token'] = new_package.access_token
 
+        substituters_to_add = []
+        trusted_public_keys_to_add = []
+
         for (s, pub_key) in zip(substituters, trusted_public_keys):
+            if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS: pass
+
             reachable, access_token = ping_nix_store(s, cache_access_tokens.get(s, None))
 
             if not reachable:
@@ -652,9 +659,10 @@ def add_new_package(
                 netrc.save()
                 rich.print(f'✅ The access token for {s} was saved to {netrc_file}.')
 
-            s_name = s.replace('https://', '').replace('http://', '').replace('/', '').strip()
-
-            install_substituter(s_name, s, pub_key)
+            substituters_to_add.append(s)
+            trusted_public_keys_to_add.append(pub_key)
+        
+        install_substituters(name, substituters_to_add, trusted_public_keys_to_add)
 
         if strict:
             nix(
@@ -801,7 +809,7 @@ def main() -> None:
         )
         if not USER_IS_TRUSTED and not CONTAINS_DEFAULT_SUBSTITUTER:
             print()
-            ask_install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
+            ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
     elif args.command == 'install':
         install_package(args.package, args.version, args.override)
     elif args.command == 'update':

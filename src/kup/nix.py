@@ -125,17 +125,19 @@ in {
 """
 
 
-def install_substituter_nixos(name: str, substituter: str, pub_key: str) -> None:
+def install_substituters_nixos(name: str, substituters: str, pub_keys: str) -> None:
     nixos_path = '/etc/nixos'
+    substituters_str = ' '.join(substituters)
+    pub_keys_str = ' '.join(pub_keys)
 
     cache_module = f"""{{
   nix = {{
     settings = {{
       substituters = [
-        "{substituter}"
+        "{substituters_str}"
       ];
       trusted-public-keys = [
-        "{pub_key}"
+        "{pub_keys_str}"
       ];
     }};
   }};
@@ -158,7 +160,7 @@ def install_substituter_nixos(name: str, substituter: str, pub_key: str) -> None
 
     rich.print(
         f'The [blue]kup[/] cache configuration was successfully written to [green]{nixos_path}/kup/{name}.nix[/].\n\n'
-        'To start using this cache add the following to your [green]/etc/nixos/configuration.nix[/]:\n\n'
+        'To start using this cache make sure you have the following line in your [green]/etc/nixos/configuration.nix[/]:\n\n'
         '   [green]imports = [ ./kup.nix ];[/]\n\n'
         'Then run:\n\n'
         '   [green]sudo nixos-rebuild switch'
@@ -216,19 +218,20 @@ def contains_key(config: List[Union[Comment, Blank, KeyVal]], key: str) -> bool:
     return False
 
 
-def add_to_keyval(item: Union[Comment, Blank, KeyVal], my_dict: dict[str, str]) -> Union[Comment, Blank, KeyVal]:
-    if isinstance(item, KeyVal):
-        if item.key in my_dict.keys():
-            return KeyVal(item.key, f'{item.value} {my_dict[item.key]}')
-    return item
+def append_to_config(config: List[Union[Comment, Blank, KeyVal]], my_dict: dict[str, str]) -> List[Union[Comment, Blank, KeyVal]]:
+    for n, item in enumerate(config):
+        if isinstance(item, KeyVal):
+            if item.key in my_dict.keys():
+                config[n] = KeyVal(item.key, f'{item.value} {my_dict[item.key]}')
+    return config
 
 
-def install_substituter_non_nixos(conf_file: str, substituter: str, pub_key: str) -> None:
+def install_substituters_non_nixos(conf_file: str, substituters: List[str], pub_keys: List[str]) -> None:
     conf = read_config(conf_file)
     if not contains_key(conf, 'substituters'):
         conf.append(KeyVal('substituters', 'https://cache.nixos.org/'))
         conf.append(KeyVal('trusted-public-keys', 'cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY='))
-    new_conf = [add_to_keyval(i, {'substituters': substituter, 'trusted-public-keys': pub_key}) for i in conf]
+    new_conf = append_to_config(conf, {'substituters': ' '.join(substituters), 'trusted-public-keys': ' '.join(pub_keys)})
     write_config('/tmp/nix.conf', new_conf)
 
     if os.path.exists(conf_file):
@@ -273,18 +276,18 @@ def print_substituters_warning() -> None:
     rich.print('Please select option [1] or [2], or press any key to continue without any changes: ')
 
 
-def install_substituter(name: str, substituter: str, pub_key: str) -> None:
+def install_substituters(name: str, substituters: List[str], pub_key: List[str]) -> None:
     if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         return
 
     if NIXOS_VERSION is not None:
-        install_substituter_nixos(name, substituter, pub_key)
+        install_substituters_nixos(name, substituters, pub_keys)
     else:
-        install_substituter_non_nixos('/etc/nix/nix.conf', substituter, pub_key)
+        install_substituters_non_nixos('/etc/nix/nix.conf', substituters, pub_keys)
 
 
-def ask_install_substituter(name: str, substituter: str, pub_key: str) -> None:
+def ask_install_substituters(name: str, substituters: List[str], pub_key: List[str]) -> None:
     if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         return
@@ -293,7 +296,7 @@ def ask_install_substituter(name: str, substituter: str, pub_key: str) -> None:
     choice = input().strip().lower()
 
     if choice in {'1', '1)'}:
-        install_substituter(name, substituter, pub_key)
+        install_substituters(name, substituters, pub_keys)
     elif choice in {'2', '2)'}:
         sys.exit(0)
 
@@ -335,7 +338,7 @@ def nix(
 ) -> bytes:
     global CONTAINS_DEFAULT_SUBSTITUTER
     if is_install and not CONTAINS_DEFAULT_SUBSTITUTER:
-        ask_install_substituter('k-framework', K_FRAMEWORK_CACHE, K_FRAMEWORK_PUBLIC_KEY)
+        ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
         _, CONTAINS_DEFAULT_SUBSTITUTER = check_substituters()
 
     if USER_IS_TRUSTED:
