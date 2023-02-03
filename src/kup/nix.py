@@ -49,7 +49,10 @@ def nix_raw(
                 env=my_env,
             )
         except subprocess.CalledProcessError as exc:
-            rich.print('❗ [red]The operation could not be completed. See above for the error output ...[/]')
+            if exc.returncode == -9:
+                rich.print('\n❗ [red]The operation could not be completed, as the installer was killed by the operating system. The process likely ran out of memory ...[/]')
+            else:
+                rich.print("\n❗ [red]The operation could not be completed.\n[/]   See the error output above (try re-running this command with '[green]--verbose[/]' for more detailed logs) ...")
             sys.exit(exc.returncode)
     else:
         return subprocess.check_output(
@@ -357,7 +360,7 @@ def nix(
     else:
         extra_subs_and_keys = []
 
-    verbosity = ['--print-build-logs'] if verbose else []
+    verbosity = ['--print-build-logs', '-vv'] if verbose else []
 
     return nix_raw(
         args,
@@ -389,7 +392,7 @@ def nix_detach(
     else:
         extra_subs_and_keys = []
 
-    verbosity = ['--print-build-logs'] if verbose else []
+    verbosity = ['--print-build-logs', '-vv'] if verbose else []
 
     os.execve(
         nix,
