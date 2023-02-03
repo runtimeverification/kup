@@ -339,13 +339,14 @@ def nix(
     exit_on_error: bool = True,
     extra_substituters: Optional[List[str]] = None,
     extra_public_keys: Optional[List[str]] = None,
+    verbose: bool = False,
 ) -> bytes:
     global CONTAINS_DEFAULT_SUBSTITUTER
     if is_install and not CONTAINS_DEFAULT_SUBSTITUTER:
         ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
         _, CONTAINS_DEFAULT_SUBSTITUTER = check_substituters()
 
-    if USER_IS_TRUSTED:
+    if is_install and USER_IS_TRUSTED:
         substituters = [K_FRAMEWORK_CACHE] + (extra_substituters if extra_substituters is not None else [])
         public_keys = [K_FRAMEWORK_PUBLIC_KEY] + (extra_public_keys if extra_public_keys is not None else [])
 
@@ -356,9 +357,11 @@ def nix(
     else:
         extra_subs_and_keys = []
 
+    verbosity = ['--print-build-logs'] if verbose else []
+
     return nix_raw(
         args,
-        extra_flags=extra_subs_and_keys if is_install and USER_IS_TRUSTED else [],
+        extra_flags=extra_subs_and_keys + verbosity,
         gc_dont_gc=True if 'darwin' in SYSTEM else False,
         exit_on_error=exit_on_error,
     )
@@ -368,6 +371,7 @@ def nix_detach(
     args: List[str],
     extra_substituters: Optional[List[str]] = None,
     extra_public_keys: Optional[List[str]] = None,
+    verbose: bool = False,
 ) -> None:
     my_env = os.environ.copy()
     if 'darwin' in SYSTEM:
@@ -385,17 +389,15 @@ def nix_detach(
     else:
         extra_subs_and_keys = []
 
-    # print(' '.join([nix]
-    #     + args
-    #     + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes']
-    #     + extra_subs_and_keys))
+    verbosity = ['--print-build-logs'] if verbose else []
 
     os.execve(
         nix,
         [nix]
         + args
         + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes']
-        + extra_subs_and_keys,
+        + extra_subs_and_keys
+        + verbosity,
         my_env,
     )
 

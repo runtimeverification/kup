@@ -416,6 +416,7 @@ def update_or_install_package(
     package: GithubPackage,
     version: Optional[str],
     package_overrides: List[List[str]],
+    verbose: bool,
 ) -> None:
     path, git_token_options = mk_path_package(package, version)
 
@@ -440,10 +441,13 @@ def update_or_install_package(
             ['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options,
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
+            verbose=verbose,
         )
 
 
-def install_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
+def install_package(
+    package_name: str, package_version: Optional[str], package_overrides: List[List[str]], verbose: bool
+) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
         rich.print(
@@ -459,14 +463,16 @@ def install_package(package_name: str, package_version: Optional[str], package_o
         return
     if package_name in installed_packages:
         package = packages[package_name]
-        update_or_install_package(package_name, package, package_version, package_overrides)
+        update_or_install_package(package_name, package, package_version, package_overrides, verbose)
     else:
         new_package = available_packages[package_name]
-        update_or_install_package(package_name, new_package, package_version, package_overrides)
+        update_or_install_package(package_name, new_package, package_version, package_overrides, verbose)
     rich.print(f" ✅ Successfully installed '[green]{package_name}[/]'.")
 
 
-def update_package(package_name: str, package_version: Optional[str], package_overrides: List[List[str]]) -> None:
+def update_package(
+    package_name: str, package_version: Optional[str], package_overrides: List[List[str]], verbose: bool
+) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
         rich.print(
@@ -485,7 +491,7 @@ def update_package(package_name: str, package_version: Optional[str], package_ov
         rich.print(f"The package '[green]{package_name}[/]' is up to date.")
         return
 
-    update_or_install_package(package_name, package, package_version, package_overrides)
+    update_or_install_package(package_name, package, package_version, package_overrides, verbose)
     rich.print(f" ✅ Successfully updated '[green]{package_name}[/]'.")
 
 
@@ -767,9 +773,11 @@ def main() -> None:
         '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
+    install.add_argument('--verbose', action='store_true', help='verbose output from nix')
 
     uninstall = subparser.add_parser('remove', help="remove the given package from the user's PATH")
     uninstall.add_argument('package', type=str)
+    uninstall.add_argument('--verbose', action='store_true', help='verbose output from nix')
 
     update = subparser.add_parser('update', help='update the package to the latest version', add_help=False)
     update.add_argument('package', type=str)
@@ -778,6 +786,7 @@ def main() -> None:
         '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
     )
     update.add_argument('-h', '--help', action=_HelpUpdateAction)
+    update.add_argument('--verbose', action='store_true', help='verbose output from nix')
 
     shell = subparser.add_parser(
         'shell', help='add the selected package to the current shell (temporary)', add_help=False
@@ -788,6 +797,7 @@ def main() -> None:
         '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
+    shell.add_argument('--verbose', action='store_true', help='verbose output from nix')
 
     subparser.add_parser('doctor', help='check if kup is installed correctly')
 
@@ -826,9 +836,9 @@ def main() -> None:
             print()
             ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
     elif args.command == 'install':
-        install_package(args.package, args.version, args.override)
+        install_package(args.package, args.version, args.override, args.verbose)
     elif args.command == 'update':
-        update_package(args.package, args.version, args.override)
+        update_package(args.package, args.version, args.override, args.verbose)
     elif args.command == 'remove':
         remove_package(args.package)
     elif args.command == 'add':
@@ -855,6 +865,7 @@ def main() -> None:
             ['shell', f'{path}#{temporary_package.package}'] + overrides + git_token_options,
             extra_substituters=temporary_package.substituters,
             extra_public_keys=temporary_package.public_keys,
+            verbose=args.verbose,
         )
 
 
