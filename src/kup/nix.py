@@ -50,9 +50,13 @@ def nix_raw(
             )
         except subprocess.CalledProcessError as exc:
             if exc.returncode == -9:
-                rich.print('\n❗ [red]The operation could not be completed, as the installer was killed by the operating system. The process likely ran out of memory ...[/]')
+                rich.print(
+                    '\n❗ [red]The operation could not be completed, as the installer was killed by the operating system. The process likely ran out of memory ...[/]'
+                )
             else:
-                rich.print("\n❗ [red]The operation could not be completed.\n[/]   See the error output above (try re-running this command with '[green]--verbose[/]' for more detailed logs) ...")
+                rich.print(
+                    "\n❗ [red]The operation could not be completed.\n[/]   See the error output above (try re-running this command with '[green]--verbose[/]' for more detailed logs) ..."
+                )
             sys.exit(exc.returncode)
     else:
         return subprocess.check_output(
