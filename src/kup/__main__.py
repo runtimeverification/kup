@@ -417,6 +417,7 @@ def update_or_install_package(
     version: Optional[str],
     package_overrides: List[List[str]],
     verbose: bool,
+    refresh: bool,
 ) -> None:
     path, git_token_options = mk_path_package(package, version)
 
@@ -442,11 +443,16 @@ def update_or_install_package(
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
             verbose=verbose,
+            refresh=refresh,
         )
 
 
 def install_package(
-    package_name: str, package_version: Optional[str], package_overrides: List[List[str]], verbose: bool
+    package_name: str,
+    package_version: Optional[str],
+    package_overrides: List[List[str]],
+    verbose: bool,
+    refresh: bool,
 ) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
@@ -463,15 +469,19 @@ def install_package(
         return
     if package_name in installed_packages:
         package = packages[package_name]
-        update_or_install_package(package_name, package, package_version, package_overrides, verbose)
+        update_or_install_package(package_name, package, package_version, package_overrides, verbose, refresh)
     else:
         new_package = available_packages[package_name]
-        update_or_install_package(package_name, new_package, package_version, package_overrides, verbose)
+        update_or_install_package(package_name, new_package, package_version, package_overrides, verbose, refresh)
     rich.print(f" ✅ Successfully installed '[green]{package_name}[/]'.")
 
 
 def update_package(
-    package_name: str, package_version: Optional[str], package_overrides: List[List[str]], verbose: bool
+    package_name: str,
+    package_version: Optional[str],
+    package_overrides: List[List[str]],
+    verbose: bool,
+    refresh: bool,
 ) -> None:
     reload_packages()
     if package_name not in available_packages.keys():
@@ -491,7 +501,7 @@ def update_package(
         rich.print(f"The package '[green]{package_name}[/]' is up to date.")
         return
 
-    update_or_install_package(package_name, package, package_version, package_overrides, verbose)
+    update_or_install_package(package_name, package, package_version, package_overrides, verbose, refresh)
     rich.print(f" ✅ Successfully updated '[green]{package_name}[/]'.")
 
 
@@ -774,6 +784,7 @@ def main() -> None:
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
     install.add_argument('--verbose', action='store_true', help='verbose output from nix')
+    install.add_argument('--refresh', action='store_true', help='force a re-fetch when pulling from a GitHub branch')
 
     uninstall = subparser.add_parser('remove', help="remove the given package from the user's PATH")
     uninstall.add_argument('package', type=str)
@@ -787,6 +798,7 @@ def main() -> None:
     )
     update.add_argument('-h', '--help', action=_HelpUpdateAction)
     update.add_argument('--verbose', action='store_true', help='verbose output from nix')
+    update.add_argument('--refresh', action='store_true', help='force a re-fetch when pulling from a GitHub branch')
 
     shell = subparser.add_parser(
         'shell', help='add the selected package to the current shell (temporary)', add_help=False
@@ -798,6 +810,7 @@ def main() -> None:
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
     shell.add_argument('--verbose', action='store_true', help='verbose output from nix')
+    shell.add_argument('--refresh', action='store_true', help='force a re-fetch when pulling from a GitHub branch')
 
     subparser.add_parser('doctor', help='check if kup is installed correctly')
 
@@ -836,9 +849,9 @@ def main() -> None:
             print()
             ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
     elif args.command == 'install':
-        install_package(args.package, args.version, args.override, args.verbose)
+        install_package(args.package, args.version, args.override, args.verbose, args.refresh)
     elif args.command == 'update':
-        update_package(args.package, args.version, args.override, args.verbose)
+        update_package(args.package, args.version, args.override, args.verbose, args.refresh)
     elif args.command == 'remove':
         remove_package(args.package)
     elif args.command == 'add':
@@ -866,6 +879,7 @@ def main() -> None:
             extra_substituters=temporary_package.substituters,
             extra_public_keys=temporary_package.public_keys,
             verbose=args.verbose,
+            refresh=args.refresh,
         )
 
 

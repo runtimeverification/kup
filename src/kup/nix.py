@@ -347,6 +347,7 @@ def nix(
     extra_substituters: Optional[List[str]] = None,
     extra_public_keys: Optional[List[str]] = None,
     verbose: bool = False,
+    refresh: bool = False,
 ) -> bytes:
     global CONTAINS_DEFAULT_SUBSTITUTER
     if is_install and not CONTAINS_DEFAULT_SUBSTITUTER:
@@ -364,11 +365,12 @@ def nix(
     else:
         extra_subs_and_keys = []
 
-    verbosity = ['--print-build-logs', '-vv'] if verbose else []
+    verbosity_flag = ['--print-build-logs', '-vv'] if verbose else []
+    refresh_flag = ['--refresh'] if refresh else []
 
     return nix_raw(
         args,
-        extra_flags=extra_subs_and_keys + verbosity,
+        extra_flags=extra_subs_and_keys + verbosity_flag + refresh_flag,
         gc_dont_gc=True if 'darwin' in SYSTEM else False,
         exit_on_error=exit_on_error,
     )
@@ -379,6 +381,7 @@ def nix_detach(
     extra_substituters: Optional[List[str]] = None,
     extra_public_keys: Optional[List[str]] = None,
     verbose: bool = False,
+    refresh: bool = False,
 ) -> None:
     my_env = os.environ.copy()
     if 'darwin' in SYSTEM:
@@ -396,7 +399,8 @@ def nix_detach(
     else:
         extra_subs_and_keys = []
 
-    verbosity = ['--print-build-logs', '-vv'] if verbose else []
+    verbosity_flag = ['--print-build-logs', '-vv'] if verbose else []
+    refresh_flag = ['--refresh'] if refresh else []
 
     os.execve(
         nix,
@@ -404,7 +408,8 @@ def nix_detach(
         + args
         + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes']
         + extra_subs_and_keys
-        + verbosity,
+        + verbosity_flag
+        + refresh_flag,
         my_env,
     )
 
