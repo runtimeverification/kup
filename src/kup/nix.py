@@ -49,7 +49,14 @@ def nix_raw(
                 env=my_env,
             )
         except subprocess.CalledProcessError as exc:
-            rich.print('❗ [red]The operation could not be completed. See above for the error output ...[/]')
+            if exc.returncode == -9:
+                rich.print(
+                    '\n❗ [red]The operation could not be completed, as the installer was killed by the operating system. The process likely ran out of memory ...[/]'
+                )
+            else:
+                rich.print(
+                    "\n❗ [red]The operation could not be completed.\n[/]   See the error output above (try re-running this command with '[green]--verbose[/]' for more detailed logs) ..."
+                )
             sys.exit(exc.returncode)
     else:
         return subprocess.check_output(
@@ -339,13 +346,15 @@ def nix(
     exit_on_error: bool = True,
     extra_substituters: Optional[List[str]] = None,
     extra_public_keys: Optional[List[str]] = None,
+    verbose: bool = False,
+    refresh: bool = False,
 ) -> bytes:
     global CONTAINS_DEFAULT_SUBSTITUTER
     if is_install and not CONTAINS_DEFAULT_SUBSTITUTER:
         ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
         _, CONTAINS_DEFAULT_SUBSTITUTER = check_substituters()
 
-    if USER_IS_TRUSTED:
+    if is_install and USER_IS_TRUSTED:
         substituters = [K_FRAMEWORK_CACHE] + (extra_substituters if extra_substituters is not None else [])
         public_keys = [K_FRAMEWORK_PUBLIC_KEY] + (extra_public_keys if extra_public_keys is not None else [])
 
@@ -356,9 +365,12 @@ def nix(
     else:
         extra_subs_and_keys = []
 
+    verbosity_flag = ['--print-build-logs', '-vv'] if verbose else []
+    refresh_flag = ['--refresh'] if refresh else []
+
     return nix_raw(
         args,
-        extra_flags=extra_subs_and_keys if is_install and USER_IS_TRUSTED else [],
+        extra_flags=extra_subs_and_keys + verbosity_flag + refresh_flag,
         gc_dont_gc=True if 'darwin' in SYSTEM else False,
         exit_on_error=exit_on_error,
     )
@@ -368,6 +380,8 @@ def nix_detach(
     args: List[str],
     extra_substituters: Optional[List[str]] = None,
     extra_public_keys: Optional[List[str]] = None,
+    verbose: bool = False,
+    refresh: bool = False,
 ) -> None:
     my_env = os.environ.copy()
     if 'darwin' in SYSTEM:
@@ -385,17 +399,17 @@ def nix_detach(
     else:
         extra_subs_and_keys = []
 
-    # print(' '.join([nix]
-    #     + args
-    #     + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes']
-    #     + extra_subs_and_keys))
+    verbosity_flag = ['--print-build-logs', '-vv'] if verbose else []
+    refresh_flag = ['--refresh'] if refresh else []
 
     os.execve(
         nix,
         [nix]
         + args
         + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes']
-        + extra_subs_and_keys,
+        + extra_subs_and_keys
+        + verbosity_flag
+        + refresh_flag,
         my_env,
     )
 
