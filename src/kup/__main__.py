@@ -808,7 +808,7 @@ def main() -> None:
         if not USER_IS_TRUSTED and not CONTAINS_DEFAULT_SUBSTITUTER:
             print()
             ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
-    elif args.command == 'install' or args.command == 'update':
+    elif args.command in {'install', 'update'}:
         install_or_update_package(
             args.package, args.version, args.override, args.verbose, args.refresh, is_update=args.command == 'update'
         )
