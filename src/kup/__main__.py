@@ -420,7 +420,7 @@ def install_or_update_package(
     is_update: bool = False,
 ) -> None:
     reload_packages()
-    if package_name not in available_packages.keys():
+    if package_name not in available_packages:
         rich.print(
             f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
             "[/]Use '[blue]kup list[/]' to see all the available packages."
