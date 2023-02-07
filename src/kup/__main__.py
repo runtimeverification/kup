@@ -411,33 +411,55 @@ def mk_override_args(package_name: str, package: GithubPackage, overrides: List[
     return nix_overrides
 
 
-def update_or_install_package(
+def install_or_update_package(
     package_name: str,
-    package: GithubPackage,
-    version: Optional[str],
+    package_version: Optional[str],
     package_overrides: List[List[str]],
     verbose: bool,
     refresh: bool,
+    is_update: bool = False,
 ) -> None:
-    path, git_token_options = mk_path_package(package, version)
+    reload_packages()
+    if package_name not in available_packages.keys():
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
+            "[/]Use '[blue]kup list[/]' to see all the available packages."
+        )
+        return
+    if is_update and package_name not in installed_packages:
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' is not currently installed.\n"
+            f"[/]Use '[blue]kup install {package_name}[/]' to install the latest version."
+        )
+        return
+
+    if package_name in installed_packages:
+        package: GithubPackage = packages[package_name]
+    else:
+        package = available_packages[package_name]
+
+    path, git_token_options = mk_path_package(package, package_version)
+    overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
 
     if type(package) is ConcretePackage:
-        if package.immutable or version or package_overrides:
+        if package.immutable or package_version or package_overrides:
             nix(['profile', 'remove', str(package.index)], is_install=False)
-            overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
             nix(
                 ['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options,
                 extra_substituters=package.substituters,
                 extra_public_keys=package.public_keys,
+                verbose=verbose,
+                refresh=refresh,
             )
         else:
             nix(
                 ['profile', 'upgrade', str(package.index)] + git_token_options,
                 extra_substituters=package.substituters,
                 extra_public_keys=package.public_keys,
+                verbose=verbose,
+                refresh=refresh,
             )
     else:
-        overrides = mk_override_args(package_name, package, package_overrides) if package_overrides else []
         nix(
             ['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options,
             extra_substituters=package.substituters,
@@ -446,63 +468,8 @@ def update_or_install_package(
             refresh=refresh,
         )
 
-
-def install_package(
-    package_name: str,
-    package_version: Optional[str],
-    package_overrides: List[List[str]],
-    verbose: bool,
-    refresh: bool,
-) -> None:
-    reload_packages()
-    if package_name not in available_packages.keys():
-        rich.print(
-            f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
-            "[/]Use '[blue]kup list[/]' to see all the available packages."
-        )
-        return
-    if package_name in installed_packages and not package_version:
-        rich.print(
-            f"❗ [red]The package '[green]{package_name}[/]' is already installed.\n"
-            f"[/]Use '[blue]kup update {package_name}[/]' to update to the latest version."
-        )
-        return
-    if package_name in installed_packages:
-        package = packages[package_name]
-        update_or_install_package(package_name, package, package_version, package_overrides, verbose, refresh)
-    else:
-        new_package = available_packages[package_name]
-        update_or_install_package(package_name, new_package, package_version, package_overrides, verbose, refresh)
-    rich.print(f" ✅ Successfully installed '[green]{package_name}[/]'.")
-
-
-def update_package(
-    package_name: str,
-    package_version: Optional[str],
-    package_overrides: List[List[str]],
-    verbose: bool,
-    refresh: bool,
-) -> None:
-    reload_packages()
-    if package_name not in available_packages.keys():
-        rich.print(
-            f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
-            "[/]Use '[blue]kup list[/]' to see all the available packages."
-        )
-        return
-    if package_name not in installed_packages:
-        rich.print(
-            f"❗ [red]The package '[green]{package_name}[/]' is not currently installed.\n"
-            f"[/]Use '[blue]kup install {package_name}[/]' to install the latest version."
-        )
-        return
-    package = packages[package_name]
-    if package.status == INSTALLED and not package_version:
-        rich.print(f"The package '[green]{package_name}[/]' is up to date.")
-        return
-
-    update_or_install_package(package_name, package, package_version, package_overrides, verbose, refresh)
-    rich.print(f" ✅ Successfully updated '[green]{package_name}[/]'.")
+    verb = 'updated' if package_name in installed_packages else 'installed'
+    rich.print(f" ✅ Successfully {verb} '[green]{package_name}[/]'.")
 
 
 def remove_package(package_name: str) -> None:
@@ -770,47 +737,40 @@ def main() -> None:
          """
         ),
     )
+    shared_args = ArgumentParser(add_help=False)
+    shared_args.add_argument('package', type=str)
+    shared_args.add_argument('--version', type=str, help='update the package to a custom version')
+    shared_args.add_argument(
+        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    )
+    shared_args.add_argument('--verbose', '-v', default=False, action='store_true', help='verbose output from nix.')
+    shared_args.add_argument(
+        '--refresh', default=False, action='store_true', help='force a re-fetch when pulling from a GitHub branch'
+    )
     subparser = parser.add_subparsers(dest='command')
     list = subparser.add_parser('list', help='show the active and installed K semantics', add_help=False)
     list.add_argument('package', nargs='?', default='all', type=str)
     list.add_argument('--inputs', action='store_true', help='show the input dependencies of the selected package')
     list.add_argument('-h', '--help', action=_HelpListAction)
 
-    install = subparser.add_parser('install', help='download and install the stated package', add_help=False)
-    install.add_argument('package', type=str)
-    install.add_argument('--version', type=str, help='install a custom version of a package')
-    install.add_argument(
-        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    install = subparser.add_parser(
+        'install', help='download and install the stated package', add_help=False, parents=[shared_args]
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
-    install.add_argument('--verbose', action='store_true', help='verbose output from nix')
-    install.add_argument('--refresh', action='store_true', help='force a re-fetch when pulling from a GitHub branch')
 
     uninstall = subparser.add_parser('remove', help="remove the given package from the user's PATH")
     uninstall.add_argument('package', type=str)
     uninstall.add_argument('--verbose', action='store_true', help='verbose output from nix')
 
-    update = subparser.add_parser('update', help='update the package to the latest version', add_help=False)
-    update.add_argument('package', type=str)
-    update.add_argument('--version', type=str, help='update the package to a custom version')
-    update.add_argument(
-        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+    update = subparser.add_parser(
+        'update', help='update the package to the latest version', add_help=False, parents=[shared_args]
     )
     update.add_argument('-h', '--help', action=_HelpUpdateAction)
-    update.add_argument('--verbose', action='store_true', help='verbose output from nix')
-    update.add_argument('--refresh', action='store_true', help='force a re-fetch when pulling from a GitHub branch')
 
     shell = subparser.add_parser(
-        'shell', help='add the selected package to the current shell (temporary)', add_help=False
-    )
-    shell.add_argument('package', type=str)
-    shell.add_argument('--version', type=str, help='temporarily install a custom version of a package')
-    shell.add_argument(
-        '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
+        'shell', help='add the selected package to the current shell (temporary)', add_help=False, parents=[shared_args]
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
-    shell.add_argument('--verbose', action='store_true', help='verbose output from nix')
-    shell.add_argument('--refresh', action='store_true', help='force a re-fetch when pulling from a GitHub branch')
 
     subparser.add_parser('doctor', help='check if kup is installed correctly')
 
@@ -848,10 +808,10 @@ def main() -> None:
         if not USER_IS_TRUSTED and not CONTAINS_DEFAULT_SUBSTITUTER:
             print()
             ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
-    elif args.command == 'install':
-        install_package(args.package, args.version, args.override, args.verbose, args.refresh)
-    elif args.command == 'update':
-        update_package(args.package, args.version, args.override, args.verbose, args.refresh)
+    elif args.command == 'install' or args.command == 'update':
+        install_or_update_package(
+            args.package, args.version, args.override, args.verbose, args.refresh, is_update=args.command == 'update'
+        )
     elif args.command == 'remove':
         remove_package(args.package)
     elif args.command == 'add':
