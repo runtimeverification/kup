@@ -229,11 +229,11 @@ def reload_packages(load_versions: bool = True) -> None:
         if 'attrPath' in m and m['attrPath'] in available_packages_lookup:
             (name, available_package) = available_packages_lookup[m['attrPath']]
             repo_path, _ = mk_github_repo_path(available_package)
-            tag = None
             if 'originalUrl' in m and m['originalUrl'].startswith(repo_path):
                 if available_package.ssh_git:
                     version = m['url'].split('&rev=')[1]
                     immutable = 'rev=' in m['originalUrl'] or 'ref=' in m['originalUrl']
+                    tag = None
                 else:
                     version = m['url'].removeprefix(f'github:{available_package.org}/{available_package.repo}/')
                     maybe_tag = m['originalUrl'].removeprefix(
@@ -244,6 +244,7 @@ def reload_packages(load_versions: bool = True) -> None:
                         tag = maybe_tag.removeprefix('/')
                     else:
                         immutable = False
+                        tag = None
 
                 status = check_package_version(available_package, m['url']) if load_versions else ''
                 packages[name] = ConcretePackage(
