@@ -229,16 +229,21 @@ def reload_packages(load_versions: bool = True) -> None:
         if 'attrPath' in m and m['attrPath'] in available_packages_lookup:
             (name, available_package) = available_packages_lookup[m['attrPath']]
             repo_path, _ = mk_github_repo_path(available_package)
+            tag = None
             if 'originalUrl' in m and m['originalUrl'].startswith(repo_path):
                 if available_package.ssh_git:
                     version = m['url'].split('&rev=')[1]
                     immutable = 'rev=' in m['originalUrl'] or 'ref=' in m['originalUrl']
                 else:
                     version = m['url'].removeprefix(f'github:{available_package.org}/{available_package.repo}/')
-                    immutable = (
-                        len(m['originalUrl'].removeprefix(f'github:{available_package.org}/{available_package.repo}'))
-                        > 1
+                    maybe_tag = m['originalUrl'].removeprefix(
+                        f'github:{available_package.org}/{available_package.repo}'
                     )
+                    if len(maybe_tag) > 1:
+                        immutable = True
+                        tag = maybe_tag.removeprefix('/')
+                    else:
+                        immutable = False
 
                 status = check_package_version(available_package, m['url']) if load_versions else ''
                 packages[name] = ConcretePackage(
@@ -251,6 +256,7 @@ def reload_packages(load_versions: bool = True) -> None:
                     idx,
                     available_package.branch,
                     available_package.ssh_git,
+                    tag=tag,
                 )
             else:
                 packages[name] = ConcretePackage(
@@ -336,7 +342,7 @@ def list_package(package_name: str, show_inputs: bool) -> None:
     else:
         table_data = [
             ['Package', 'Installed version', 'Status'],
-        ] + [[name, p.version, p.status] for name, p in packages.items()]
+        ] + [[name, f'{p.version}{" (" + p.tag + ")" if p.tag else ""}', p.status] for name, p in packages.items()]
         table = SingleTable(table_data)
         print(table.table)
 

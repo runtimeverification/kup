@@ -32,6 +32,7 @@ class ConcretePackage(GithubPackage):
         'package',
         'status',
         'version',
+        'tag',
         'immutable',
         'index',
         'branch',
@@ -55,8 +56,10 @@ class ConcretePackage(GithubPackage):
         access_token: Optional[str] = None,
         substituters: Optional[list[str]] = None,
         public_keys: Optional[list[str]] = None,
+        tag: Optional[str] = None,
     ):
         self.version = version
+        self.tag = tag
         self.status = status
         self.immutable = immutable
         self.index = index
