@@ -87,14 +87,24 @@ packages: Dict[str, ConcretePackage] = {}
 installed_packages: List[str] = []
 
 
-def mk_github_repo_path(package: GithubPackage) -> Tuple[str, List[str]]:
+def mk_github_repo_path(package: GithubPackage, override_branch: Optional[str] = None) -> Tuple[str, List[str]]:
 
     if package.ssh_git:
-        branch = f'?ref={package.branch}' if package.branch else ''
+        if override_branch:
+            branch = f'?ref={override_branch}'
+        elif package.branch:
+            branch = f'?ref={package.branch}'
+        else:
+            branch = ''
         # return f'git+https://github.com/{package.org}/{package.repo}/{branch}'
         return f'git+ssh://git@github.com/{package.org}/{package.repo}.git{branch}', []
     else:
-        branch = '/' + package.branch if package.branch else ''
+        if override_branch:
+            branch = '/' + override_branch
+        elif package.branch:
+            branch = '/' + package.branch
+        else:
+            branch = ''
         access = ['--option', 'access-tokens', f'github.com={package.access_token}'] if package.access_token else []
         return f'github:{package.org}/{package.repo}{branch}', access
 
@@ -359,32 +369,10 @@ def is_sha1(maybe_sha: str) -> bool:
 
 
 def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> Tuple[str, List[str]]:
-    if version_or_path:
-        if os.path.isdir(version_or_path):
-            return os.path.abspath(version_or_path), []
-        else:
-            path, git_token_options = mk_github_repo_path(package)
-            if package.ssh_git:
-                if not is_sha1(version_or_path):
-                    rich.print(
-                        '⚠️  [yellow]Only commit hashes are currently supported for private packages accessed over SSH.'
-                    )
-                rev = '&rev=' if package.branch else '?rev='
-                return path + rev + version_or_path, git_token_options
-            else:
-                return path + '/' + version_or_path, git_token_options
+    if version_or_path and os.path.isdir(version_or_path):
+        return os.path.abspath(version_or_path), []
     else:
-        return mk_github_repo_path(package)
-
-
-def mk_path(path: str, version_or_path: Optional[str]) -> str:
-    if version_or_path:
-        if os.path.isdir(version_or_path):
-            return os.path.abspath(version_or_path)
-        else:
-            return path + '/' + version_or_path
-    else:
-        return path
+        return mk_github_repo_path(package, version_or_path)
 
 
 def mk_override_args(package_name: str, package: GithubPackage, overrides: List[List[str]]) -> List[str]:
@@ -411,7 +399,7 @@ def mk_override_args(package_name: str, package: GithubPackage, overrides: List[
                 )
                 sys.exit(1)
         repo = valid_inputs[input] if not override_input else valid_inputs[override_input]
-        path = mk_path(f'github:runtimeverification/{repo}', version_or_path)
+        path, _ = mk_path_package(GithubPackage('runtimeverification', repo, ''), version_or_path)
         nix_overrides.append('--override-input')
         nix_overrides.append(input)
         nix_overrides.append(path)
