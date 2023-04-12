@@ -91,13 +91,13 @@ def mk_github_repo_path(package: GithubPackage, override_branch: Optional[str] =
 
     if package.ssh_git:
         if override_branch:
-            branch = f'?ref={override_branch}'
+            branch = f'?ref={override_branch}' if not is_sha1(override_branch) else f'?rev={override_branch}'
         elif package.branch:
-            branch = f'?ref={package.branch}'
+            branch = f'?ref={package.branch}' if not is_sha1(package.branch) else f'?rev={package.branch}'
         else:
             branch = ''
         # return f'git+https://github.com/{package.org}/{package.repo}/{branch}'
-        return f'git+ssh://git@github.com/{package.org}/{package.repo}.git{branch}', []
+        return f'"git+ssh://git@github.com/{package.org}/{package.repo}.git{branch}"', []
     else:
         if override_branch:
             branch = '/' + override_branch
