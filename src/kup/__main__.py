@@ -44,14 +44,14 @@ UPDATE = '🟠 \033[93mnewer version available\033[0m'
 LOCAL = '\033[3mlocal checkout\033[0m'
 
 available_packages: Dict[str, GithubPackage] = {
-    'kup': GithubPackage('runtimeverification', 'kup', f'packages.{SYSTEM}.kup'),
-    'k': GithubPackage('runtimeverification', 'k', f'packages.{SYSTEM}.k'),
-    'kavm': GithubPackage('runtimeverification', 'avm-semantics', f'packages.{SYSTEM}.kavm'),
-    'kevm': GithubPackage('runtimeverification', 'evm-semantics', f'packages.{SYSTEM}.kevm'),
-    'kplutus': GithubPackage('runtimeverification', 'plutus-core-semantics', f'packages.{SYSTEM}.kplutus'),
-    'kore-exec': GithubPackage('runtimeverification', 'haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-exec'),
-    'kore-rpc': GithubPackage('runtimeverification', 'haskell-backend', f'packages.{SYSTEM}.kore:exe:kore-rpc'),
-    'pyk': GithubPackage('runtimeverification', 'pyk', f'packages.{SYSTEM}.pyk'),
+    'kup': GithubPackage('runtimeverification', 'kup', 'kup'),
+    'k': GithubPackage('runtimeverification', 'k', 'k'),
+    'kavm': GithubPackage('runtimeverification', 'avm-semantics', 'kavm'),
+    'kevm': GithubPackage('runtimeverification', 'evm-semantics', 'kevm'),
+    'kplutus': GithubPackage('runtimeverification', 'plutus-core-semantics', 'kplutus'),
+    'kore-exec': GithubPackage('runtimeverification', 'haskell-backend', 'kore:exe:kore-exec'),
+    'kore-rpc': GithubPackage('runtimeverification', 'haskell-backend', 'kore:exe:kore-rpc'),
+    'pyk': GithubPackage('runtimeverification', 'pyk', 'pyk'),
 }
 
 # Load any private packages
@@ -75,7 +75,7 @@ for config_path in BaseDirectory.load_config_paths('kup'):
             available_packages[pkg_name] = GithubPackage(
                 config[pkg_name]['org'],
                 config[pkg_name]['repo'],
-                f'packages.{SYSTEM}.{config[pkg_name]["package"]}',
+                config[pkg_name]['package'],
                 config[pkg_name]['branch'] if 'branch' in config[pkg_name] else None,
                 (config[pkg_name]['ssh+git'].lower() == 'true') if 'ssh+git' in config[pkg_name] else False,
                 config[pkg_name]['github-access-token'] if 'github-access-token' in config[pkg_name] else None,
@@ -87,14 +87,20 @@ packages: Dict[str, ConcretePackage] = {}
 installed_packages: List[str] = []
 
 
-def mk_github_repo_path(package: GithubPackage) -> Tuple[str, List[str]]:
-
+def mk_github_repo_path(package: GithubPackage, override_branch: Optional[str] = None) -> Tuple[str, List[str]]:
     if package.ssh_git:
-        branch = f'?ref={package.branch}' if package.branch else ''
-        # return f'git+https://github.com/{package.org}/{package.repo}/{branch}'
-        return f'git+ssh://git@github.com/{package.org}/{package.repo}.git{branch}', []
+        ref = package.branch if package.branch else 'master'
+        branch = f'?ref={ref}'
+        if override_branch:
+            branch = f'?ref={override_branch}' if not is_sha1(override_branch) else f'?rev={override_branch}'
+        return f'git+ssh://git@github.com/{package.org}/{package.repo}{branch}', []
     else:
-        branch = '/' + package.branch if package.branch else ''
+        if override_branch:
+            branch = '/' + override_branch
+        elif package.branch:
+            branch = '/' + package.branch
+        else:
+            branch = ''
         access = ['--option', 'access-tokens', f'github.com={package.access_token}'] if package.access_token else []
         return f'github:{package.org}/{package.repo}{branch}', access
 
@@ -359,32 +365,10 @@ def is_sha1(maybe_sha: str) -> bool:
 
 
 def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> Tuple[str, List[str]]:
-    if version_or_path:
-        if os.path.isdir(version_or_path):
-            return os.path.abspath(version_or_path), []
-        else:
-            path, git_token_options = mk_github_repo_path(package)
-            if package.ssh_git:
-                if not is_sha1(version_or_path):
-                    rich.print(
-                        '⚠️  [yellow]Only commit hashes are currently supported for private packages accessed over SSH.'
-                    )
-                rev = '&rev=' if package.branch else '?rev='
-                return path + rev + version_or_path, git_token_options
-            else:
-                return path + '/' + version_or_path, git_token_options
+    if version_or_path and os.path.isdir(version_or_path):
+        return os.path.abspath(version_or_path), []
     else:
-        return mk_github_repo_path(package)
-
-
-def mk_path(path: str, version_or_path: Optional[str]) -> str:
-    if version_or_path:
-        if os.path.isdir(version_or_path):
-            return os.path.abspath(version_or_path)
-        else:
-            return path + '/' + version_or_path
-    else:
-        return path
+        return mk_github_repo_path(package, version_or_path)
 
 
 def mk_override_args(package_name: str, package: GithubPackage, overrides: List[List[str]]) -> List[str]:
@@ -411,7 +395,7 @@ def mk_override_args(package_name: str, package: GithubPackage, overrides: List[
                 )
                 sys.exit(1)
         repo = valid_inputs[input] if not override_input else valid_inputs[override_input]
-        path = mk_path(f'github:runtimeverification/{repo}', version_or_path)
+        path, _ = mk_path_package(GithubPackage('runtimeverification', repo, ''), version_or_path)
         nix_overrides.append('--override-input')
         nix_overrides.append(input)
         nix_overrides.append(path)
@@ -680,7 +664,7 @@ def add_new_package(
 
         if strict:
             nix(
-                ['eval', f'{path}#packages.{SYSTEM}.{package}', '--json'] + git_token_options,
+                ['eval', f'{path}#{package}', '--json'] + git_token_options,
                 is_install=False,
                 extra_substituters=substituters,
                 extra_public_keys=trusted_public_keys,
