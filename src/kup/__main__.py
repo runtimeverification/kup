@@ -23,6 +23,7 @@ from .nix import (
     CURRENT_TRUSTED_PUBLIC_KEYS,
     K_FRAMEWORK_CACHE,
     K_FRAMEWORK_PUBLIC_KEY,
+    SYSTEM,
     USER_IS_TRUSTED,
     ask_install_substituters,
     get_extra_substituters_from_flake,
@@ -228,7 +229,7 @@ def reload_packages(load_versions: bool = True) -> None:
         manifest = []
 
     packages = {}
-    available_packages_lookup = {p.package: (key, p) for key, p in available_packages.items()}
+    available_packages_lookup = {f'packages.{SYSTEM}.{p.package}': (key, p) for key, p in available_packages.items()}
 
     for idx, m in enumerate(manifest):
         if 'attrPath' in m and m['attrPath'] in available_packages_lookup:
@@ -433,13 +434,22 @@ def install_or_update_package(
 
     if type(package) is ConcretePackage:
         if package.immutable or package_version or package_overrides:
+            # we first attempt to build the package before deleting the old one form the profile, to avoid
+            # a situation where we delete the old package and then fail to build the new one. This is
+            # especially awkward when updating kup
+            nix(
+                ['build', f'{path}#{package.package}', '--no-link'] + overrides + git_token_options,
+                extra_substituters=package.substituters,
+                extra_public_keys=package.public_keys,
+                verbose=verbose,
+                refresh=refresh,
+            )
             nix(['profile', 'remove', str(package.index)], is_install=False)
             nix(
                 ['profile', 'install', f'{path}#{package.package}'] + overrides + git_token_options,
                 extra_substituters=package.substituters,
                 extra_public_keys=package.public_keys,
                 verbose=verbose,
-                refresh=refresh,
             )
         else:
             nix(
@@ -561,7 +571,7 @@ def add_new_package(
                     exit_on_error=False,
                 )
             else:
-                print('Detected a private repository without a GitHub access token, using git+ssh...')
+                rich.print('Detected a private repository without a GitHub access token, using git+ssh...')
                 new_package = GithubPackage(org, repo, package, branch, ssh_git=True)
                 path, git_token_options = mk_github_repo_path(new_package)
                 nix(
