@@ -399,6 +399,8 @@ def mk_override_args(package_name: str, package: GithubPackage, overrides: List[
         nix_overrides.append('--override-input')
         nix_overrides.append(input)
         nix_overrides.append(path)
+        nix_overrides.append('--update-input')
+        nix_overrides.append(input)
     return nix_overrides
 
 
