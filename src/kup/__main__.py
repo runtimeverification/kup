@@ -133,6 +133,8 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
             for key_input, path in nodes[key]['inputs'].items():
                 if type(path) != list:
                     inputs = inputs | process_input(nodes, path)
+                elif len(path) == 0:
+                    continue
                 else:
                     last = path[-1]
                     if (
@@ -152,6 +154,8 @@ def process_input(nodes: dict, key: str, override: bool = False) -> dict:
             for key_input, path in nodes[key]['inputs'].items():
                 if type(path) != list:
                     inputs = inputs | process_input(nodes, path)
+                elif len(path) == 0:
+                    continue
                 else:
                     last = path[-1]
                     if (
