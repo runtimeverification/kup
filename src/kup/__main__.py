@@ -4,7 +4,7 @@ import os
 import sys
 import textwrap
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, MutableMapping, Optional, Tuple
 
 import requests
 import rich
@@ -32,7 +32,7 @@ from .nix import (
     nix_detach,
     set_netrc_file,
 )
-from .package import ConcretePackage, GithubPackage, PackageVersion
+from .package import ConcretePackage, Follows, GithubPackage, PackageMetadata, PackageVersion
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
@@ -117,110 +117,89 @@ def check_package_version(p: GithubPackage, current_url: str) -> str:
         return UPDATE
 
 
-# walk all the inputs and their inputs and collect only the ones pointing to runtimeverification repos
-def process_input(nodes: dict, key: str, override: bool = False) -> dict:
-    if (
-        'original' in nodes[key]
-        and 'owner' in nodes[key]['original']
-        and nodes[key]['original']['owner'] == 'runtimeverification'
-    ):
-        repo = nodes[key]['original']['repo']
-        rev = nodes[key]['locked']['rev']
-        if 'inputs' not in nodes[key]:
-            return {key: {'repo': repo, 'org': 'runtimeverification', 'rev': rev}}
-        else:
-            inputs: dict = {}
-            for key_input, path in nodes[key]['inputs'].items():
-                if type(path) != list:
-                    inputs = inputs | process_input(nodes, path)
-                elif len(path) == 0:
-                    continue
-                else:
-                    last = path[-1]
-                    if (
-                        'original' in nodes[last]
-                        and 'owner' in nodes[last]['original']
-                        and nodes[last]['original']['owner'] == 'runtimeverification'
-                    ):
-                        inputs[key_input] = {'follows': path}
-
-            return {key: {'repo': repo, 'org': 'runtimeverification', 'rev': rev, 'inputs': inputs}}
-
-    elif override:
-        if 'inputs' not in nodes[key]:
-            return {}
-        else:
-            inputs = {}
-            for key_input, path in nodes[key]['inputs'].items():
-                if type(path) != list:
-                    inputs = inputs | process_input(nodes, path)
-                elif len(path) == 0:
-                    continue
-                else:
-                    last = path[-1]
-                    if (
-                        'original' in nodes[last]
-                        and 'owner' in nodes[last]['original']
-                        and nodes[last]['original']['owner'] == 'runtimeverification'
-                    ):
-                        inputs[key_input] = {'follows': path}
-            return {key: {'inputs': inputs}}
+# This walk function walks the metadata returned by nix, where inputs can either point to a final node in
+# the root of the tree or an indirection/pointer path through the tree
+def walk_path_nix_meta(nodes: dict, current_node_id: str, path: list[str]) -> str:
+    if len(path) == 0:
+        return current_node_id
     else:
-        return {}
+        next_node_path_or_id = nodes[current_node_id]['inputs'][path[0]]
+        if type(next_node_path_or_id) == str:
+            return walk_path_nix_meta(nodes, next_node_path_or_id, path[1:])
+        else:
+            next_node_id = walk_path_nix_meta(nodes, next_node_path_or_id[0], next_node_path_or_id[1:])
+            return walk_path_nix_meta(nodes, next_node_id, path[1:])
 
 
-def get_package_inputs(name: str, package: GithubPackage) -> dict:
+# walk all the inputs recursively and collect only the ones pointing to runtimeverification repos
+def parse_package_metadata(nodes: dict, current_node_id: str, root_level: bool = False) -> PackageMetadata | None:
+    if not (
+        'original' in nodes[current_node_id]
+        and 'owner' in nodes[current_node_id]['original']
+        and nodes[current_node_id]['original']['owner'] == 'runtimeverification'
+    ):
+        if not root_level:
+            return None
+        else:
+            repo = ''
+            rev = ''
+            org = 'runtimeverification'
+    else:
+        repo = nodes[current_node_id]['original']['repo']
+        rev = nodes[current_node_id]['locked']['rev']
+        org = 'runtimeverification'
+
+    raw_inputs = nodes[current_node_id]['inputs'].items() if 'inputs' in nodes[current_node_id] else []
+    inputs: MutableMapping[str, PackageMetadata | Follows] = {}
+
+    for input_key, input_path_or_node_id in raw_inputs:
+        if type(input_path_or_node_id) == str:  # direct input
+            input_node_id = input_path_or_node_id
+            i = parse_package_metadata(nodes, input_node_id)
+            if i is not None:
+                inputs[input_key] = i
+        else:  # following some other input
+            input_node_id = walk_path_nix_meta(nodes, input_path_or_node_id[0], input_path_or_node_id[1:])
+            if (
+                'original' in nodes[input_node_id]
+                and 'owner' in nodes[input_node_id]['original']
+                and nodes[input_node_id]['original']['owner'] == 'runtimeverification'
+            ):
+                inputs[input_key] = Follows(input_path_or_node_id)
+
+    return PackageMetadata(repo, rev, org, inputs)
+
+
+def get_package_metadata(package: GithubPackage) -> PackageMetadata:
     try:
         path, git_token_options = mk_github_repo_path(package)
         result = nix(['flake', 'metadata', path, '--json'] + git_token_options, is_install=False)
     except Exception:
-        return {}
+        rich.print('❗ [red]Could not get package metadata!')
+        sys.exit(1)
     meta = json.loads(result)
-    root = meta['locks']['root']
+    root_id = meta['locks']['root']
 
-    return {name: process_input(meta['locks']['nodes'], root, True)[root]}
-
-
-def print_package_tree(inputs: dict, key: str, root: Any = None) -> None:
-    rev = (
-        f" - github:{inputs[key]['org']}/{inputs[key]['repo']} [green]{inputs[key]['rev'][:7]}[/]"
-        if 'rev' in inputs[key]
-        else ''
-    )
-    follows = (' - follows [green]' + '/'.join(inputs[key]['follows'])) if 'follows' in inputs[key] else ''
-    if root is None:
-        n = Tree('Inputs:')
+    res = parse_package_metadata(meta['locks']['nodes'], root_id, True)
+    if not res:
+        rich.print('❗ [red]Could not parse package metadata!')
+        sys.exit(1)
     else:
-        n = Tree(f'{key}{rev}{follows}')
-        root.add(n)
-    if 'inputs' in inputs[key]:
-        for k in inputs[key]['inputs'].keys():
-            print_package_tree(inputs[key]['inputs'], k, n)
-
-    if root is None:
-        rich.print(n)
+        return res
 
 
-# Computes all proper paths and "follows" paths.
-# When the user calls `kup shell <package> --override <path> ...`,
-# we most likely want the `<path>`` to be a proper path and not a follows path.
-# We should emit a warning only however, since the user may know better and
-# only wants to override the follow path
-def flatten_inputs_paths(inputs: dict) -> Tuple[List[Tuple[List[str], str]], List[Tuple[List[str], List[str]]]]:
-    flattened_proper = []
-    flattened_follow = []
-    for k in inputs.keys():
-        if 'follows' in inputs[k]:
-            flattened_follow.append(([k], inputs[k]['follows']))
-        elif 'inputs' in inputs[k]:
-            flattened_proper_k, flattened_follow_k = flatten_inputs_paths(inputs[k]['inputs'])
-            flattened_proper.extend(
-                [([k] + path, repo) for path, repo in flattened_proper_k]
-                if len(flattened_proper_k) > 0
-                else [([k], inputs[k]['repo'])]
-            )
-            flattened_follow.extend([([k] + path, proper_path) for path, proper_path in flattened_follow_k])
-    return flattened_proper, flattened_follow
+# build a rich.Tree of inputs for the given package metadata
+def package_metadata_tree(p: PackageMetadata | Follows, lbl: str | None = None) -> Tree:
+    if lbl is None:
+        tree = Tree('Inputs:')
+    else:
+        rev = f' - github:{p.org}/{p.repo} [green]{p.rev[:7]}[/]' if type(p) == PackageMetadata else ''
+        follows = (' - follows [green]' + '/'.join(p.follows)) if type(p) == Follows else ''
+        tree = Tree(f'{lbl}{rev}{follows}')
+    if type(p) == PackageMetadata:
+        for k in p.inputs.keys():
+            tree.add(package_metadata_tree(p.inputs[k], k))
+    return tree
 
 
 def reload_packages(load_versions: bool = True) -> None:
@@ -315,8 +294,8 @@ def list_package(package_name: str, show_inputs: bool) -> None:
         listed_package = available_packages[package_name]
 
         if show_inputs:
-            inputs = get_package_inputs(package_name, listed_package)
-            print_package_tree(inputs, package_name)
+            inputs = get_package_metadata(listed_package)
+            rich.print(package_metadata_tree(inputs))
         else:
             auth = {'Authorization': f'Bearer {listed_package.access_token}'} if listed_package.access_token else {}
             tags = requests.get(
@@ -376,36 +355,53 @@ def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> T
         return mk_github_repo_path(package, version_or_path)
 
 
+def walk_package_metadata(node: PackageMetadata | Follows, path: list[str]) -> PackageMetadata | Follows | None:
+    if len(path) == 0:
+        return node
+    else:
+        if type(node) == PackageMetadata and path[0] in node.inputs:
+            return walk_package_metadata(node.inputs[path[0]], path[1:])
+        else:
+            return None
+
+
 def mk_override_args(package_name: str, package: GithubPackage, overrides: List[List[str]]) -> List[str]:
     if not overrides:
         return []
-    inputs = get_package_inputs(package_name, package)
-    valid_inps, overrides_inps = flatten_inputs_paths(inputs[package_name]['inputs'])
-    valid_inputs = {'/'.join(path): repo for path, repo in valid_inps}
-    overrides_inputs = [('/'.join(i), '/'.join(j)) for (i, j) in overrides_inps]
+    inputs = get_package_metadata(package)
 
     nix_overrides = []
     for [input, version_or_path] in overrides:
-        override_input = next((override for (i, override) in overrides_inputs if i == input), None)
-        if input not in valid_inputs:
-            if override_input:
-                rich.print(
-                    f"⚠️ [yellow]The input '[green]{input}[/]' you are trying to override follows '[green]{override_input}[/]'.\n"
-                    f"[/]You may want to call this command with '[blue]--override {override_input}[/]' instead."
-                )
-            else:
-                rich.print(
-                    f"❗ [red]'[green]{input}[/]' is not a valid input of the package '[green]{package_name}[/]'.\n"
-                    f"[/]To see the valid inputs, run '[blue]kup list {package_name} --inputs[/]'"
-                )
-                sys.exit(1)
-        repo = valid_inputs[input] if not override_input else valid_inputs[override_input]
-        path, _ = mk_path_package(GithubPackage('runtimeverification', repo, ''), version_or_path)
-        nix_overrides.append('--override-input')
-        nix_overrides.append(input)
-        nix_overrides.append(path)
-        nix_overrides.append('--update-input')
-        nix_overrides.append(input)
+        input_path = input.split('/')
+        possible_input = walk_package_metadata(inputs, input_path)
+        if possible_input is not None and type(possible_input) == Follows:
+            follows_path = '/'.join(possible_input.follows)
+            rich.print(
+                f"⚠️ [yellow]The input '[green]{input}[/]' you are trying to override follows '[green]{follows_path}[/]'.\n"
+                f"[/]You may want to call this command with '[blue]--override {follows_path}[/]' instead."
+            )
+            input_path = possible_input.follows
+            possible_input = walk_package_metadata(inputs, input_path)
+        if possible_input is None:
+            rich.print(
+                f"❗ [red]'[green]{input}[/]' is not a valid input of the package '[green]{package_name}[/]'.\n"
+                f"[/]To see the valid inputs, run '[blue]kup list {package_name} --inputs[/]'"
+            )
+            sys.exit(1)
+
+        if type(possible_input) == PackageMetadata:
+            repo = possible_input.repo
+            git_path, _ = mk_path_package(GithubPackage('runtimeverification', repo, ''), version_or_path)
+            nix_overrides.append('--override-input')
+            nix_overrides.append('/'.join(input_path))
+            nix_overrides.append(git_path)
+            nix_overrides.append('--update-input')
+            nix_overrides.append('/'.join(input_path))
+        else:
+            rich.print(
+                f"❗ [red]Internal error when accessing package metadata. Expected '[green]{input}[/]' to be a direct input.[/]"
+            )
+            sys.exit(1)
     return nix_overrides
 
 
