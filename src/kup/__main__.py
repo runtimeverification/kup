@@ -4,7 +4,7 @@ import os
 import sys
 import textwrap
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
-from typing import Any, Dict, List, MutableMapping, Optional, Tuple
+from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
 
 import requests
 import rich
@@ -132,7 +132,7 @@ def walk_path_nix_meta(nodes: dict, current_node_id: str, path: list[str]) -> st
 
 
 # walk all the inputs recursively and collect only the ones pointing to runtimeverification repos
-def parse_package_metadata(nodes: dict, current_node_id: str, root_level: bool = False) -> PackageMetadata | None:
+def parse_package_metadata(nodes: dict, current_node_id: str, root_level: bool = False) -> Union[PackageMetadata, None]:
     if not (
         'original' in nodes[current_node_id]
         and 'owner' in nodes[current_node_id]['original']
@@ -150,7 +150,7 @@ def parse_package_metadata(nodes: dict, current_node_id: str, root_level: bool =
         org = 'runtimeverification'
 
     raw_inputs = nodes[current_node_id]['inputs'].items() if 'inputs' in nodes[current_node_id] else []
-    inputs: MutableMapping[str, PackageMetadata | Follows] = {}
+    inputs: MutableMapping[str, Union[PackageMetadata, Follows]] = {}
 
     for input_key, input_path_or_node_id in raw_inputs:
         if type(input_path_or_node_id) == str:  # direct input
@@ -189,7 +189,7 @@ def get_package_metadata(package: GithubPackage) -> PackageMetadata:
 
 
 # build a rich.Tree of inputs for the given package metadata
-def package_metadata_tree(p: PackageMetadata | Follows, lbl: str | None = None) -> Tree:
+def package_metadata_tree(p: Union[PackageMetadata, Follows], lbl: str | None = None) -> Tree:
     if lbl is None:
         tree = Tree('Inputs:')
     else:
@@ -355,7 +355,9 @@ def mk_path_package(package: GithubPackage, version_or_path: Optional[str]) -> T
         return mk_github_repo_path(package, version_or_path)
 
 
-def walk_package_metadata(node: PackageMetadata | Follows, path: list[str]) -> PackageMetadata | Follows | None:
+def walk_package_metadata(
+    node: Union[PackageMetadata, Follows], path: list[str]
+) -> Union[PackageMetadata, Follows, None]:
     if len(path) == 0:
         return node
     else:
