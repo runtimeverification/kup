@@ -189,7 +189,7 @@ def get_package_metadata(package: GithubPackage) -> PackageMetadata:
 
 
 # build a rich.Tree of inputs for the given package metadata
-def package_metadata_tree(p: Union[PackageMetadata, Follows], lbl: str | None = None) -> Tree:
+def package_metadata_tree(p: Union[PackageMetadata, Follows], lbl: Union[str, None] = None) -> Tree:
     if lbl is None:
         tree = Tree('Inputs:')
     else:
