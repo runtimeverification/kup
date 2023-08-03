@@ -504,7 +504,9 @@ def install_or_update_package(
 
     verb = 'updated' if package_alias in installed_packages else 'installed'
     display_version = f' ({package_version})' if package_version else ' (master)'
-    rich.print(f" ✅ Successfully {verb} '[green]{package_alias}[/]' to version [blue]{package_name.to_string()}{display_version}[/].")
+    rich.print(
+        f" ✅ Successfully {verb} '[green]{package_alias}[/]' to version [blue]{package_name.to_string()}{display_version}[/]."
+    )
 
 
 def remove_package(package_alias: str) -> None:
