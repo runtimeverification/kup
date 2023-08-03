@@ -1,6 +1,26 @@
 from typing import Mapping, Optional, Union
 
 
+class PackageName:
+    __slots__ = ['base', 'ext']
+
+    def __init__(
+        self,
+        base: str,
+        ext: Optional[list[str]] = None,
+    ):
+        self.base = base
+        self.ext = ext if ext is not None else []
+
+    def to_string(self) -> str:
+        return '.'.join([self.base] + self.ext)
+
+    @staticmethod
+    def parse(name: str) -> 'PackageName':
+        s = name.split('.')
+        return PackageName(s[0], s[1:])
+
+
 class GithubPackage:
     __slots__ = ['org', 'repo', 'package', 'branch', 'ssh_git', 'access_token', 'substituters', 'public_keys']
 
@@ -8,7 +28,7 @@ class GithubPackage:
         self,
         org: str,
         repo: str,
-        package: str,
+        package: PackageName,
         branch: Optional[str] = None,
         ssh_git: bool = False,
         access_token: Optional[str] = None,
@@ -46,7 +66,7 @@ class ConcretePackage(GithubPackage):
         self,
         org: str,
         repo: str,
-        package: str,
+        package: PackageName,
         status: str,
         version: str = '-',
         immutable: bool = True,
