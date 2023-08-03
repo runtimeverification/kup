@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Mapping, Optional, Union
 
 
 class GithubPackage:
@@ -74,3 +74,20 @@ class PackageVersion:
         self.message = message
         self.tag = tag
         self.merged_at = merged_at
+
+
+class PackageMetadata:
+    __slots__ = ['repo', 'rev', 'org', 'inputs']
+
+    def __init__(self, repo: str, rev: str, org: str, inputs: Mapping[str, Union['PackageMetadata', 'Follows']]):
+        self.repo = repo
+        self.rev = rev
+        self.org = org
+        self.inputs = inputs
+
+
+class Follows:
+    __slots__ = ['follows']
+
+    def __init__(self, follows: list[str]):
+        self.follows = follows
