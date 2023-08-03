@@ -193,7 +193,7 @@ def package_metadata_tree(p: Union[PackageMetadata, Follows], lbl: Union[str, No
     if lbl is None:
         tree = Tree('Inputs:')
     else:
-        rev = f' - github:{p.org}/{p.repo} [green]{p.rev[:7]}[/]' if type(p) == PackageMetadata else ''
+        rev = f' - github:{p.org}/{p.repo}' if type(p) == PackageMetadata else ''
         follows = (' - follows [green]' + '/'.join(p.follows)) if type(p) == Follows else ''
         tree = Tree(f'{lbl}{rev}{follows}')
     if type(p) == PackageMetadata:
