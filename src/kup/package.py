@@ -1,4 +1,23 @@
-from typing import Optional
+from dataclasses import dataclass
+from typing import Iterable, Mapping, Optional, Union
+
+
+@dataclass(frozen=True)
+class PackageName:
+    base: str
+    ext: tuple[str, ...]
+
+    def __init__(self, base: str, ext: Iterable[str] = ()):
+        object.__setattr__(self, 'base', base)
+        object.__setattr__(self, 'ext', tuple(ext))
+
+    def __str__(self) -> str:
+        return '.'.join([self.base] + list(self.ext))
+
+    @staticmethod
+    def parse(name: str) -> 'PackageName':
+        s = name.split('.')
+        return PackageName(s[0], s[1:])
 
 
 class GithubPackage:
@@ -8,7 +27,7 @@ class GithubPackage:
         self,
         org: str,
         repo: str,
-        package: str,
+        package: PackageName,
         branch: Optional[str] = None,
         ssh_git: bool = False,
         access_token: Optional[str] = None,
@@ -46,7 +65,7 @@ class ConcretePackage(GithubPackage):
         self,
         org: str,
         repo: str,
-        package: str,
+        package: PackageName,
         status: str,
         version: str = '-',
         immutable: bool = True,
@@ -74,3 +93,20 @@ class PackageVersion:
         self.message = message
         self.tag = tag
         self.merged_at = merged_at
+
+
+class PackageMetadata:
+    __slots__ = ['repo', 'rev', 'org', 'inputs']
+
+    def __init__(self, repo: str, rev: str, org: str, inputs: Mapping[str, Union['PackageMetadata', 'Follows']]):
+        self.repo = repo
+        self.rev = rev
+        self.org = org
+        self.inputs = inputs
+
+
+class Follows:
+    __slots__ = ['follows']
+
+    def __init__(self, follows: list[str]):
+        self.follows = follows
