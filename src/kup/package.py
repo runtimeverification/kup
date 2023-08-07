@@ -1,19 +1,18 @@
-from typing import Mapping, Optional, Union
+from dataclasses import dataclass
+from typing import Iterable, Mapping, Optional, Union
 
 
+@dataclass(frozen=True)
 class PackageName:
-    __slots__ = ['base', 'ext']
+    base: str
+    ext: tuple[str, ...]
 
-    def __init__(
-        self,
-        base: str,
-        ext: Optional[list[str]] = None,
-    ):
-        self.base = base
-        self.ext = ext if ext is not None else []
+    def __init__(self, base: str, ext: Iterable[str] = ()):
+        object.__setattr__(self, 'base', base)
+        object.__setattr__(self, 'ext', tuple(ext))
 
-    def to_string(self) -> str:
-        return '.'.join([self.base] + self.ext)
+    def __str__(self) -> str:
+        return '.'.join([self.base] + list(self.ext))
 
     @staticmethod
     def parse(name: str) -> 'PackageName':

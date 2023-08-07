@@ -4,7 +4,7 @@ import os
 import sys
 import textwrap
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
-from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, MutableMapping, Optional, Tuple, Union
 
 import requests
 import rich
@@ -353,7 +353,7 @@ def list_package(package_alias: str, show_inputs: bool) -> None:
     else:
         table_data = [['Package name (alias)', 'Installed version', 'Status'],] + [
             [
-                PackageName(alias, p.package.ext).to_string(),
+                str(PackageName(alias, p.package.ext)),
                 f'{p.version}{" (" + p.tag + ")" if p.tag else ""}',
                 p.status,
             ]
@@ -434,7 +434,7 @@ def mk_override_args(package_alias: str, package: GithubPackage, overrides: List
 
 def install_or_update_package(
     package_alias: str,
-    package_ext: list[str],
+    package_ext: Iterable[str],
     package_version: Optional[str],
     package_overrides: List[List[str]],
     verbose: bool,
@@ -472,7 +472,7 @@ def install_or_update_package(
             # a situation where we delete the old package and then fail to build the new one. This is
             # especially awkward when updating kup
             nix(
-                ['build', f'{path}#{package_name.to_string()}', '--no-link'] + overrides + git_token_options,
+                ['build', f'{path}#{package_name}', '--no-link'] + overrides + git_token_options,
                 extra_substituters=package.substituters,
                 extra_public_keys=package.public_keys,
                 verbose=verbose,
@@ -480,7 +480,7 @@ def install_or_update_package(
             )
             nix(['profile', 'remove', str(package.index)], is_install=False)
             nix(
-                ['profile', 'install', f'{path}#{package_name.to_string()}'] + overrides + git_token_options,
+                ['profile', 'install', f'{path}#{package_name}'] + overrides + git_token_options,
                 extra_substituters=package.substituters,
                 extra_public_keys=package.public_keys,
                 verbose=verbose,
@@ -495,7 +495,7 @@ def install_or_update_package(
             )
     else:
         nix(
-            ['profile', 'install', f'{path}#{package_name.to_string()}'] + overrides + git_token_options,
+            ['profile', 'install', f'{path}#{package_name}'] + overrides + git_token_options,
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
             verbose=verbose,
@@ -505,7 +505,7 @@ def install_or_update_package(
     verb = 'updated' if package_alias in installed_packages else 'installed'
     display_version = f' ({package_version})' if package_version else ' (master)'
     rich.print(
-        f" ✅ Successfully {verb} '[green]{package_alias}[/]' to version [blue]{package_name.to_string()}{display_version}[/]."
+        f" ✅ Successfully {verb} '[green]{package_alias}[/]' to version [blue]{package_name}{display_version}[/]."
     )
 
 
@@ -643,7 +643,7 @@ def add_new_package(
         config[name] = {
             'org': new_package.org,
             'repo': new_package.repo,
-            'package': new_package.package.to_string(),
+            'package': str(new_package.package),
             'ssh+git': str(new_package.ssh_git),
             'substituters': ' '.join(substituters),
             'public_keys': ' '.join(trusted_public_keys),
@@ -883,7 +883,7 @@ def main() -> None:
         # combine the actual package name with the possible extensions
         package_name = PackageName(temporary_package.package.base, ext)
         nix_detach(
-            ['shell', f'{path}#{package_name.to_string()}'] + overrides + git_token_options,
+            ['shell', f'{path}#{package_name}'] + overrides + git_token_options,
             extra_substituters=temporary_package.substituters,
             extra_public_keys=temporary_package.public_keys,
             verbose=args.verbose,
