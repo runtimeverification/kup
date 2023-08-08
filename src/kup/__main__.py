@@ -205,10 +205,21 @@ def package_metadata_tree(p: Union[PackageMetadata, Follows], lbl: Union[str, No
 def lookup_available_package(raw_name: str) -> Optional[Tuple[str, GithubPackage]]:
     for alias, p in available_packages.items():
         name_prefix = f'packages.{SYSTEM}.{p.package.base}'
+        if raw_name == name_prefix:
+            return alias, GithubPackage(
+                p.org,
+                p.repo,
+                PackageName(p.package.base),
+                p.branch,
+                p.ssh_git,
+                p.access_token,
+                p.substituters,
+                p.public_keys,
+            )
+        name_prefix = name_prefix + '.'
         if raw_name.startswith(name_prefix):
             ext_str = raw_name.removeprefix(name_prefix)
-            ext_str = ext_str.removeprefix('.').strip()
-            ext = ext_str.split('.') if ext_str != '' else []
+            ext = ext_str.strip().split('.')
             return alias, GithubPackage(
                 p.org,
                 p.repo,
