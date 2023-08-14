@@ -860,7 +860,7 @@ def main() -> None:
 
         if args.command == 'list':
             list_package(alias, args.inputs)
-        
+
         elif args.command in {'install', 'update'}:
             install_or_update_package(
                 alias, ext, args.version, args.override, args.verbose, args.refresh, is_update=args.command == 'update'
