@@ -840,15 +840,10 @@ def main() -> None:
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
     args = parser.parse_args()
-    alias_with_ext = PackageName.parse(args.package)
-    alias, ext = alias_with_ext.base, alias_with_ext.ext
 
     if 'help' in args and args.help:
         with open(os.path.join(KUP_DIR, f'{args.command}-help.md'), 'r+') as help_file:
             console.print(Markdown(help_file.read(), code_theme='emacs'))
-            sys.exit(0)
-    if args.command == 'list':
-        list_package(alias, args.inputs)
     elif args.command == 'doctor':
         trusted_check = '🟢' if USER_IS_TRUSTED else '🟠'
         substituter_check = '🟢' if CONTAINS_DEFAULT_SUBSTITUTER else ('🟢' if USER_IS_TRUSTED else '🔴')
@@ -859,47 +854,54 @@ def main() -> None:
         if not USER_IS_TRUSTED and not CONTAINS_DEFAULT_SUBSTITUTER:
             print()
             ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
-    elif args.command in {'install', 'update'}:
-        install_or_update_package(
-            alias, ext, args.version, args.override, args.verbose, args.refresh, is_update=args.command == 'update'
-        )
-    elif args.command == 'remove':
-        remove_package(alias)
-    elif args.command == 'add':
-        add_new_package(
-            args.name,
-            args.uri,
-            PackageName.parse(args.package),
-            args.github_access_token,
-            {repo: key for [repo, key] in args.cache_access_token} if args.cache_access_token else {},
-            args.strict,
-        )
-    elif args.command == 'shell':
-        reload_packages(load_versions=False)
-        if alias not in available_packages.keys():
-            rich.print(
-                f"❗ [red]The package '[green]{alias}[/]' does not exist.\n"
-                "[/]Use '[blue]kup list[/]' to see all the available packages."
+    else:
+        alias_with_ext = PackageName.parse(args.package)
+        alias, ext = alias_with_ext.base, alias_with_ext.ext
+
+        if args.command == 'list':
+            list_package(alias, args.inputs)
+        
+        elif args.command in {'install', 'update'}:
+            install_or_update_package(
+                alias, ext, args.version, args.override, args.verbose, args.refresh, is_update=args.command == 'update'
             )
-            return
-        if alias in installed_packages:
-            rich.print(
-                f"❗ [red]The package '[green]{alias}[/]' is currently installed and thus cannot be temporarily added to the PATH.\n"
-                "[/]Use:\n * '[blue]kup update {alias} ...[/]' to replace the installed version or\n * '[blue]kup remove {alias}[/]' to remove the installed version and then re-run this command"
+        elif args.command == 'remove':
+            remove_package(alias)
+        elif args.command == 'add':
+            add_new_package(
+                args.name,
+                args.uri,
+                PackageName.parse(args.package),
+                args.github_access_token,
+                {repo: key for [repo, key] in args.cache_access_token} if args.cache_access_token else {},
+                args.strict,
             )
-            return
-        temporary_package = available_packages[alias]
-        path, git_token_options = mk_path_package(temporary_package, args.version)
-        overrides = mk_override_args(alias, temporary_package, args.override)
-        # combine the actual package name with the possible extensions
-        package_name = PackageName(temporary_package.package.base, ext)
-        nix_detach(
-            ['shell', f'{path}#{package_name}'] + overrides + git_token_options,
-            extra_substituters=temporary_package.substituters,
-            extra_public_keys=temporary_package.public_keys,
-            verbose=args.verbose,
-            refresh=args.refresh,
-        )
+        elif args.command == 'shell':
+            reload_packages(load_versions=False)
+            if alias not in available_packages.keys():
+                rich.print(
+                    f"❗ [red]The package '[green]{alias}[/]' does not exist.\n"
+                    "[/]Use '[blue]kup list[/]' to see all the available packages."
+                )
+                return
+            if alias in installed_packages:
+                rich.print(
+                    f"❗ [red]The package '[green]{alias}[/]' is currently installed and thus cannot be temporarily added to the PATH.\n"
+                    "[/]Use:\n * '[blue]kup update {alias} ...[/]' to replace the installed version or\n * '[blue]kup remove {alias}[/]' to remove the installed version and then re-run this command"
+                )
+                return
+            temporary_package = available_packages[alias]
+            path, git_token_options = mk_path_package(temporary_package, args.version)
+            overrides = mk_override_args(alias, temporary_package, args.override)
+            # combine the actual package name with the possible extensions
+            package_name = PackageName(temporary_package.package.base, ext)
+            nix_detach(
+                ['shell', f'{path}#{package_name}'] + overrides + git_token_options,
+                extra_substituters=temporary_package.substituters,
+                extra_public_keys=temporary_package.public_keys,
+                verbose=args.verbose,
+                refresh=args.refresh,
+            )
 
 
 if __name__ == '__main__':
