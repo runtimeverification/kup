@@ -49,6 +49,7 @@ available_packages: Dict[str, GithubPackage] = {
     'kavm': GithubPackage('runtimeverification', 'avm-semantics', PackageName('kavm')),
     'kevm': GithubPackage('runtimeverification', 'evm-semantics', PackageName('kevm')),
     'kplutus': GithubPackage('runtimeverification', 'plutus-core-semantics', PackageName('kplutus')),
+    'kmir': GithubPackage('runtimeverification', 'mir-semantics', PackageName('kmir')),
     'kore-exec': GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore:exe:kore-exec')),
     'kore-rpc': GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore:exe:kore-rpc')),
     'pyk': GithubPackage('runtimeverification', 'pyk', PackageName('pyk')),
