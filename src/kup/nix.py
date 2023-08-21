@@ -261,7 +261,7 @@ def print_substituters_warning() -> None:
     add_user_to_trusted = ' '.join(new_trusted_users)
     add_user_to_trusted_nix = ' '.join([f'"{s}"' for s in new_trusted_users])
     rich.print(
-        f'\n⚠️ [yellow] The k-framework binary cache [green]{K_FRAMEWORK_CACHE}[/] in not configured in your nix installation and\n'
+        f'\n⚠️ [yellow] The k-framework binary cache [green]{K_FRAMEWORK_CACHE}[/] is not configured in your nix installation and\n'
         'the current user does not have sufficient permissions to add and use it.\n'
         '[blue]kup[/] relies on this cache to provide faster installation using pre-built binaries.[/]\n\n'
         'You can still install kup packages from source, however, to avoid building the packages on your local machine, consider:\n'
