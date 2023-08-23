@@ -159,7 +159,7 @@ def parse_package_metadata(nodes: dict, current_node_id: str, root_level: bool =
             i = parse_package_metadata(nodes, input_node_id)
             if i is not None:
                 inputs[input_key] = i
-        else:  # following some other input
+        elif len(input_path_or_node_id) > 0:
             input_node_id = walk_path_nix_meta(nodes, input_path_or_node_id[0], input_path_or_node_id[1:])
             if (
                 'original' in nodes[input_node_id]
