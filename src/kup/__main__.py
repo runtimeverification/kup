@@ -844,7 +844,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if 'help' in args and args.help:
+    if args.command is None:
+        parser.print_help()
+    elif 'help' in args and args.help:
         with open(os.path.join(KUP_DIR, f'{args.command}-help.md'), 'r+') as help_file:
             console.print(Markdown(help_file.read(), code_theme='emacs'))
     elif args.command == 'doctor':
