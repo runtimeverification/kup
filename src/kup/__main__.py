@@ -53,7 +53,7 @@ available_packages: Dict[str, GithubPackage] = {
     'kore-exec': GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore:exe:kore-exec')),
     'kore-rpc': GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore:exe:kore-rpc')),
     'pyk': GithubPackage('runtimeverification', 'pyk', PackageName('pyk')),
-    'booster': GithubPackage('runtimeverification', 'hs-backend-booster', PackageName('booster'), 'main'),
+    'kore-rpc-booster': GithubPackage('runtimeverification', 'hs-backend-booster', PackageName('kore-rpc-booster'), 'main'),
 }
 
 # Load any private packages
