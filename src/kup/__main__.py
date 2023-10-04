@@ -59,6 +59,8 @@ available_packages: Dict[str, GithubPackage] = {
     'pyk': GithubPackage('runtimeverification', 'pyk', PackageName('pyk')),
 }
 
+tag_cache: Dict[str, Optional[str]] = {}
+
 # Load any private packages
 for config_path in BaseDirectory.load_config_paths('kup'):
     if os.path.exists(os.path.join(config_path, 'user_packages.ini')):
@@ -87,6 +89,21 @@ for config_path in BaseDirectory.load_config_paths('kup'):
                 substituters,
                 public_keys,
             )
+    if os.path.exists(os.path.join(config_path, 'tag_cache')):
+        with open(os.path.join(config_path, 'tag_cache'), 'r') as f:
+            try:
+                tag_cache = json.loads(f.read())
+            except Exception:
+                pass
+
+
+def save_tags(tags: Dict[str, Optional[str]]) -> None:
+    global tag_cache
+    for config_path in BaseDirectory.load_config_paths('kup'):
+        with open(os.path.join(config_path, 'tag_cache'), 'w') as f:
+            tag_cache = tag_cache | tags
+            f.write(json.dumps(tag_cache))
+
 
 packages: Dict[str, ConcretePackage] = {}
 installed_packages: List[str] = []
@@ -238,7 +255,7 @@ def lookup_available_package(raw_name: str) -> Optional[Tuple[str, GithubPackage
 
 
 def reload_packages(load_versions: bool = True) -> None:
-    global packages, installed_packages
+    global packages, installed_packages, tag_cache
 
     if os.path.exists(f'{os.getenv("HOME")}/.nix-profile/manifest.json'):
         manifest_file = open(f'{os.getenv("HOME")}/.nix-profile/manifest.json')
@@ -270,7 +287,24 @@ def reload_packages(load_versions: bool = True) -> None:
                             tag = maybe_tag.removeprefix('/')
                         else:
                             immutable = False
-                            tag = None
+
+                            if version in tag_cache:
+                                tag = tag_cache[version]
+                            else:
+                                github_tags = requests.get(
+                                    f'https://api.github.com/repos/{available_package.org}/{available_package.repo}/tags',
+                                    headers={},
+                                )
+                                if github_tags.ok:
+                                    tagged_releases = {t['commit']['sha']: t['name'] for t in github_tags.json()}
+                                    if version in tagged_releases:
+                                        save_tags(tagged_releases)
+                                        tag = tagged_releases[version]
+                                    else:
+                                        save_tags({version: None})
+                                        tag = None
+                                else:
+                                    tag = None
 
                     status = check_package_version(available_package, m['url']) if load_versions else ''
                     packages[alias] = ConcretePackage(
