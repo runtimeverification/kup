@@ -1,6 +1,6 @@
 # kup add *<url>* *<package>*
 
-Whilst kup contains a set of default curated packaged by default, it is also able to manage user defined packages from any (potentially private) github repositories. To add a new package `foo` to kup, simply call
+Whilst kup contains a set of default curated packages by default, it is also able to manage user defined packages from any (potentially private) github repositories. To add a new package `foo` to kup, simply call
 
 ```
 ➜ kup add myorg/myrepo{/myfeature} foo
