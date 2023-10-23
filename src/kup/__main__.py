@@ -300,7 +300,8 @@ def list_package(package_name: str, show_inputs: bool) -> None:
                     c['commit']['message'],
                     tagged_releases[c['sha']]['name'] if c['sha'] in tagged_releases else None,
                     c['commit']['committer']['date'],
-                    f'github:{listed_package.org}/{listed_package.repo}/{c["sha"]}#{listed_package.package_name}' in pinned_package_cache.keys()
+                    f'github:{listed_package.org}/{listed_package.repo}/{c["sha"]}#{listed_package.package_name}'
+                    in pinned_package_cache.keys(),
                 )
                 for c in commits.json()
                 if not c['commit']['message'].startswith("Merge remote-tracking branch 'origin/develop'")
@@ -311,7 +312,12 @@ def list_package(package_name: str, show_inputs: bool) -> None:
             table_data = [['Version \033[92m(installed)\033[0m', 'Commit', 'Message', 'Cached']] + [
                 highlight_row(
                     p.sha in installed_packages_sha,
-                    [p.tag if p.tag else '', p.sha[:7], textwrap.shorten(p.message, width=50, placeholder='...'), '  ✅' if p.cached else ''],
+                    [
+                        p.tag if p.tag else '',
+                        p.sha[:7],
+                        textwrap.shorten(p.message, width=50, placeholder='...'),
+                        '  ✅' if p.cached else '',
+                    ],
                 )
                 for p in all_releases
             ]
