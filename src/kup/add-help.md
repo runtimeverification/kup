@@ -1,12 +1,12 @@
-# kup add *<package>* *<url>*
+# kup add *<url>* *<package>*
 
 Whilst kup contains a set of default curated packaged by default, it is also able to manage user defined packages from any (potentially private) github repositories. To add a new package `foo` to kup, simply call
 
 ```
-➜ kup add foo myorg/myrepo{/myfeature} bar
+➜ kup add myorg/myrepo{/myfeature} foo
 ```
 
-Where `https://github.com/myorg/myrepo/tree/myfeature` is a valid repository containing a `flake.nix` file with a defined `bar` package output. Adding the last `/myfeature` is optional.
+Where `https://github.com/myorg/myrepo/tree/myfeature` is a valid repository containing a `flake.nix` file with a defined `foo` package output. Adding the last `/myfeature` is optional.
 
 ---
 
@@ -15,7 +15,7 @@ Where `https://github.com/myorg/myrepo/tree/myfeature` is a valid repository con
 ---
 
 
-# kup add *<package>* *<url>* --github-access-token *<access_token>*
+# kup add *<url>* *<package>* --github-access-token *<access_token>*
 
 Kup has two different modes for adding private packages. The default one is to use the `git+ssh` mode, which uses locally stored SSH credentials to access the repository. If you already have your private repository access set up over SSH, adding the package to kup should just work.
 
@@ -26,7 +26,7 @@ https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/c
 Once you have your token with the correct permissions to read from the private repsitory, you can pass it as an argument to `kup add`
 
 ```
-➜ kup add foo myorg/myrepo{/myfeature} bar --github-access-token ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+➜ kup add myorg/myrepo{/myfeature} foo --github-access-token ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
 The added advantage to using an access token is that running `kup list foo` will work just as it does for public packages, whereas this functionality is not available for private packages over SSH.

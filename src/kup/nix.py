@@ -12,6 +12,10 @@ import rich
 K_FRAMEWORK_CACHE = 'https://k-framework.cachix.org'
 K_FRAMEWORK_PUBLIC_KEY = 'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE='
 
+K_FRAMEWORK_BINARY_CACHE = 'https://k-framework-binary.cachix.org'
+
+K_FRAMEWORK_BINARY_CACHE_NAME = 'k-framework-binary'
+
 if os.path.exists('/run/current-system/nixos-version'):
     with open('/run/current-system/nixos-version', 'r') as nixos_version:
         NIXOS_VERSION: Optional[str] = nixos_version.read()
@@ -38,14 +42,18 @@ def nix_raw(
     extra_flags: List[str] = DEFAULT_NIX_SUBSTITUTER,
     gc_dont_gc: bool = True,
     exit_on_error: bool = True,
+    verbose: bool = False,
 ) -> bytes:
     my_env = os.environ.copy()
     if gc_dont_gc:
         my_env['GC_DONT_GC'] = '1'
+    cmd = ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags
+    if verbose:
+        print(' '.join(cmd))
     if exit_on_error:
         try:
             output = subprocess.check_output(
-                ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags,
+                cmd,
                 env=my_env,
             )
         except subprocess.CalledProcessError as exc:
@@ -54,13 +62,14 @@ def nix_raw(
                     '\n❗ [red]The operation could not be completed, as the installer was killed by the operating system. The process likely ran out of memory ...[/]'
                 )
             else:
+                print(exc)
                 rich.print(
                     "\n❗ [red]The operation could not be completed.\n[/]   See the error output above (try re-running this command with '[green]--verbose[/]' for more detailed logs) ..."
                 )
             sys.exit(exc.returncode)
     else:
         return subprocess.check_output(
-            ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags,
+            cmd,
             env=my_env,
             stderr=subprocess.DEVNULL,
         )
@@ -68,7 +77,7 @@ def nix_raw(
     return output
 
 
-SYSTEM = (
+ARCH = (
     nix_raw(['eval', '--impure', '--expr', 'builtins.currentSystem'], extra_flags=[])
     .decode('utf8')
     .strip()
@@ -107,7 +116,7 @@ def check_substituters() -> Tuple[bool, bool]:
         elif os.access(os.path.dirname(netrc_file), os.X_OK | os.W_OK):
             CURRENT_NETRC_FILE = netrc_file
 
-        has_all_substituters = 'https://k-framework.cachix.org' in CURRENT_SUBSTITUTERS
+        has_all_substituters = K_FRAMEWORK_CACHE in CURRENT_SUBSTITUTERS
         return current_user_is_trusted, has_all_substituters
     except Exception as e:
         print(str(e))
@@ -371,8 +380,9 @@ def nix(
     return nix_raw(
         args,
         extra_flags=extra_subs_and_keys + verbosity_flag + refresh_flag,
-        gc_dont_gc=True if 'darwin' in SYSTEM else False,
+        gc_dont_gc=True if 'darwin' in ARCH else False,
         exit_on_error=exit_on_error,
+        verbose=verbose,
     )
 
 
@@ -384,7 +394,7 @@ def nix_detach(
     refresh: bool = False,
 ) -> None:
     my_env = os.environ.copy()
-    if 'darwin' in SYSTEM:
+    if 'darwin' in ARCH:
         my_env['GC_DONT_GC'] = '1'
     nix = subprocess.check_output(['which', 'nix']).decode('utf8').strip()
 
@@ -442,3 +452,15 @@ def get_extra_substituters_from_flake(path: str, extra_opts: List[str]) -> Tuple
         trusted_public_keys = []
 
     return substituters, trusted_public_keys
+
+
+def publish_and_pin_package(
+    nix_path: str,
+    cache: str,
+    key: str,
+    keep_days: Optional[str] = None,
+) -> None:
+    subprocess.check_output(['cachix', 'push', cache, nix_path])
+    subprocess.check_output(
+        ['cachix', 'pin', cache, key, nix_path] + ['--keep-days', str(keep_days)] if keep_days else []
+    )
