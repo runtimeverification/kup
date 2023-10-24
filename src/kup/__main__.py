@@ -455,7 +455,7 @@ def install_package(
     verb = 'updated' if package_name.base in installed_packages else 'installed'
     display_version = f' ({package_version})' if package_version else ' (master)'
     rich.print(
-        f" ✅ Successfully {verb} '[green]{package_name.base}[/]' to version [blue]{package.uri}{display_version}[/]."
+        f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/]."
     )
 
 
