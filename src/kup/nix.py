@@ -11,6 +11,8 @@ import rich
 
 K_FRAMEWORK_CACHE = 'https://k-framework.cachix.org'
 K_FRAMEWORK_PUBLIC_KEY = 'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE='
+K_FRAMEWORK_BINARY_PUBLIC_KEY = 'k-framework-binary.cachix.org-1:pJedQ8iG19BW3v/DMMmiRVtwRBGO3fyMv2Ws0OpBADs='
+
 
 K_FRAMEWORK_BINARY_CACHE = 'https://k-framework-binary.cachix.org'
 
@@ -34,7 +36,7 @@ def nix_substituters(subsituters: List[str], public_keys: List[str]) -> List[str
     ]
 
 
-DEFAULT_NIX_SUBSTITUTER = nix_substituters([K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
+DEFAULT_NIX_SUBSTITUTER = nix_substituters([K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY, K_FRAMEWORK_BINARY_PUBLIC_KEY])
 
 
 def nix_raw(
@@ -116,7 +118,11 @@ def check_substituters() -> Tuple[bool, bool]:
         elif os.access(os.path.dirname(netrc_file), os.X_OK | os.W_OK):
             CURRENT_NETRC_FILE = netrc_file
 
-        has_all_substituters = K_FRAMEWORK_CACHE in CURRENT_SUBSTITUTERS
+        has_all_substituters = (
+            K_FRAMEWORK_CACHE in CURRENT_SUBSTITUTERS
+            and K_FRAMEWORK_PUBLIC_KEY in CURRENT_TRUSTED_PUBLIC_KEYS
+            and K_FRAMEWORK_BINARY_PUBLIC_KEY in CURRENT_TRUSTED_PUBLIC_KEYS
+        )
         return current_user_is_trusted, has_all_substituters
     except Exception as e:
         print(str(e))
@@ -360,12 +366,16 @@ def nix(
 ) -> bytes:
     global CONTAINS_DEFAULT_SUBSTITUTER
     if is_install and not CONTAINS_DEFAULT_SUBSTITUTER:
-        ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
+        ask_install_substituters(
+            'k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY, K_FRAMEWORK_BINARY_PUBLIC_KEY]
+        )
         _, CONTAINS_DEFAULT_SUBSTITUTER = check_substituters()
 
     if is_install and USER_IS_TRUSTED:
         substituters = [K_FRAMEWORK_CACHE] + (extra_substituters if extra_substituters is not None else [])
-        public_keys = [K_FRAMEWORK_PUBLIC_KEY] + (extra_public_keys if extra_public_keys is not None else [])
+        public_keys = [K_FRAMEWORK_PUBLIC_KEY, K_FRAMEWORK_BINARY_PUBLIC_KEY] + (
+            extra_public_keys if extra_public_keys is not None else []
+        )
 
         extra_subs_and_keys = nix_substituters(
             [s for s in substituters if s not in CURRENT_SUBSTITUTERS],
@@ -400,7 +410,9 @@ def nix_detach(
 
     if USER_IS_TRUSTED:
         substituters = [K_FRAMEWORK_CACHE] + (extra_substituters if extra_substituters is not None else [])
-        public_keys = [K_FRAMEWORK_PUBLIC_KEY] + (extra_public_keys if extra_public_keys is not None else [])
+        public_keys = [K_FRAMEWORK_PUBLIC_KEY, K_FRAMEWORK_BINARY_PUBLIC_KEY] + (
+            extra_public_keys if extra_public_keys is not None else []
+        )
 
         extra_subs_and_keys = nix_substituters(
             [s for s in substituters if s not in CURRENT_SUBSTITUTERS],
