@@ -231,6 +231,13 @@ def reload_packages(load_versions: bool = True) -> None:
     pinned_package_cache_reverse = {v: k for k, v in pinned_package_cache.items()}
     packages = {}
     for idx, m in enumerate(manifest):
+        # fix potential inconsistencies between nix profiles
+        # sometimes storing url/originalUrl and sometimes uri/originalUri
+        if 'uri' in m:
+            m['url'] = m['uri']
+        if 'originalUri' in m:
+            m['originalUrl'] = m['originalUri']
+
         if 'attrPath' in m and m['attrPath']:
             available_package = lookup_available_package(m['attrPath'])
             if available_package is not None:
