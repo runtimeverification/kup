@@ -239,7 +239,7 @@ def reload_packages(load_versions: bool = True) -> None:
                     packages[available_package.package_name.base] = ConcretePackage.parse(
                         m['url'], available_package, idx, load_versions
                     )
-                elif m['originalUrl'].startswith('git+file://'):
+                elif 'originalUrl' in m and m['originalUrl'].startswith('git+file://'):
                     packages[available_package.package_name.base] = LocalPackage(
                         available_package,
                         available_package.package_name,
