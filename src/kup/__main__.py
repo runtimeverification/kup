@@ -739,16 +739,17 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
         rich.print('❗ [red]Could not find out path for package!')
         sys.exit(1)
 
-    c = subprocess.call(['cachix', 'push', cache, nix_store_path])
-    if c > 0:
+    try:
+        subprocess.run(['cachix', 'push', cache, nix_store_path], check=True)
+    except Exception:
         rich.print('❗ [red]Could not push binaries to cachix!')
         sys.exit(1)
-
-    pin_args = ['cachix', 'pin', cache, cache_key, nix_store_path] + (
-        ['--keep-days', str(keep_days)] if keep_days else []
-    )
-    c = subprocess.call(pin_args)
-    if c > 0:
+    try:
+        pin_args = ['cachix', 'pin', cache, cache_key, nix_store_path] + (
+            ['--keep-days', str(keep_days)] if keep_days else []
+        )
+        subprocess.run(pin_args, check=True)
+    except Exception:
         rich.print('❗ [red]Could not pin package! Make sure you have cachix >=1.6')
         sys.exit(1)
 
