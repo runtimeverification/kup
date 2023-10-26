@@ -382,7 +382,7 @@ def mk_override_args(package: GithubPackage, overrides: List[List[str]]) -> List
             )
             input_path = possible_input.follows
             possible_input = walk_package_metadata(inputs, input_path)
-        if possible_input is None:
+        if possible_input is None and not version_or_path.startswith('github:'):
             rich.print(
                 f"❗ [red]'[green]{input}[/]' is not a valid input of the package '[green]{package.package_name.base}[/]'.\n"
                 f"[/]To see the valid inputs, run '[blue]kup list {package.package_name.base} --inputs[/]'"
@@ -399,6 +399,12 @@ def mk_override_args(package: GithubPackage, overrides: List[List[str]]) -> List
             nix_overrides.append(git_path)
             nix_overrides.append('--update-input')
             nix_overrides.append('/'.join(input_path))
+        elif version_or_path.startswith('github:'):
+            nix_overrides.append('--override-input')
+            nix_overrides.append(input)
+            nix_overrides.append(version_or_path)
+            nix_overrides.append('--update-input')
+            nix_overrides.append(input)
         else:
             rich.print(
                 f"❗ [red]Internal error when accessing package metadata. Expected '[green]{input}[/]' to be a direct input.[/]"
