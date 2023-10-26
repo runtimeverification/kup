@@ -1,0 +1,11 @@
+# 0.2.1
+
+* Allow arbitrary overrides of the form `kup install ... --override ... github:...`
+
+
+# 0.2.0
+
+* Removed `kup update` as it was functionally equivalent to `kup install`
+* Renamed `kup remove` to `kup uninstall` so as to make it clear its associated with the `kup install` operation and not the `kup add`
+* Added `kup publish` which allows uploading a package to a cachix cache and pinning it to it's uri
+* Added the ability to query the `k-framework-binary.cachix.org` cache to download pre-built binaries of a package if they exist in the pinned cache
