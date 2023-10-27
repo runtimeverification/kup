@@ -1,4 +1,4 @@
-# 0.2.1
+# 0.2.2
 
 * `kup publish` returns exit code 1 if `cachix push/pin` commands fail
 
