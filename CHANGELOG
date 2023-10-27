@@ -1,5 +1,9 @@
 # 0.2.1
 
+* `kup publish` returns exit code 1 if `cachix push/pin` commands fail
+
+# 0.2.1
+
 * Allow arbitrary overrides of the form `kup install ... --override ... github:...`
 
 
