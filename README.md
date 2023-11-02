@@ -6,31 +6,31 @@
 bash <(curl https://kframework.org/install)
 ```
 
-You can then install K Framework via:
+You can then install/update K Framework via:
 
 ```
 kup install k
 ```
 
-update K with:
+remove K via
 
 ```
-kup update k
+kup uninstall k
 ```
 
-And list available versions with:
+and list available versions with:
 
 ```
 kup list k
 ```
 
-To list further available packages, run
+To list all available packages, run
 
 ```
 kup list
 ```
 
-and any further functionality is described in the help commands:
+Any further functionality is described in the help commands:
 
 ```
 kup --help

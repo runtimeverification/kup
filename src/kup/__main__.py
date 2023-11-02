@@ -799,13 +799,13 @@ def main() -> None:
             """\
          additional information:
              For more detailed help for the different sub-commands, call
-               kup {list,install,remove,update,shell} --help
+               kup {list,install,add,shell} --help
          """
         ),
     )
     shared_args = ArgumentParser(add_help=False)
     shared_args.add_argument('package', type=str)
-    shared_args.add_argument('--version', type=str, help='update the package to a custom version')
+    shared_args.add_argument('--version', type=str, help='install the given version of the package')
     shared_args.add_argument(
         '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
     )
@@ -904,7 +904,7 @@ def main() -> None:
             if package_name.base in installed_packages:
                 rich.print(
                     f"❗ [red]The package '[green]{package_name.pretty_name}[/]' is currently installed and thus cannot be temporarily added to the PATH.\n"
-                    f"[/]Use:\n * '[blue]kup update {package_name.pretty_name} ...[/]' to replace the installed version or\n * '[blue]kup remove {package_name.base}[/]' to remove the installed version and then re-run this command"
+                    f"[/]Use:\n * '[blue]kup install {package_name.pretty_name} --version ...[/]' to replace the installed version or\n * '[blue]kup uninstall {package_name.base}[/]' to remove the installed version and then re-run this command"
                 )
                 return
 
