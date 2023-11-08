@@ -1,3 +1,7 @@
+# 0.2.3
+
+* Cleanup help and docs, removing mentions to the update/remove keywords
+
 # 0.2.2
 
 * `kup publish` returns exit code 1 if `cachix push/pin` commands fail

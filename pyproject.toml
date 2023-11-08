@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "kup"
-version = "0.2.2"
+version = "0.2.3"
 description = "kup is a tool for managing installations of the K framework along with the different available semantics"
 authors = [
     "Runtime Verification, Inc. <contact@runtimeverification.com>",
