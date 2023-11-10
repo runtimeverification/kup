@@ -1,3 +1,7 @@
+# 0.2.4
+
+* Add the `--health` option to `kup list` showing the lag behind master for each dependency
+
 # 0.2.3
 
 * Cleanup help and docs, removing mentions to the update/remove keywords
