@@ -10,6 +10,8 @@ from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
 import giturlparse
 import requests
 import rich
+from rich.align import Align
+from rich.columns import Columns
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.theme import Theme
@@ -172,15 +174,15 @@ def get_package_metadata(package: GithubPackage) -> PackageMetadata:
 
 # build a rich.Tree of inputs for the given package metadata
 def package_metadata_tree(
-    p: Union[PackageMetadata, Follows], lbl: Union[str, None] = None, show_health: bool = False
+    p: Union[PackageMetadata, Follows], lbl: Union[str, None] = None, show_status: bool = False
 ) -> Tree:
     if lbl is None:
         tree = Tree('Inputs:')
     else:
         rev = f' - github:{p.org}/{p.repo}' if type(p) == PackageMetadata else ''
         follows = (' - follows [green]' + '/'.join(p.follows)) if type(p) == Follows else ''
-        health = ''
-        if show_health and type(p) == PackageMetadata:
+        status = ''
+        if show_status and type(p) == PackageMetadata:
             auth = {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
             commits = requests.get(f'https://api.github.com/repos/{p.org}/{p.repo}/commits', headers=auth)
             if commits.ok:
@@ -188,18 +190,21 @@ def package_metadata_tree(
                 if p.rev in commits_list:
                     idx = commits_list.index(p.rev)
                     if idx == 0:
-                        health = ' 🟢 up to date'
-                    elif idx < 5:
-                        health = f' 🟠 {idx} versions behind master'
+                        status = ' 🟢 up to date               '
+                    elif idx == 1:
+                        status = f' 🟠 {idx} version behind master  '
+                    elif idx < 10:
+                        status = f' 🟠 {idx} versions behind master '
                     else:
-                        health = f' 🔴 {idx} versions behind master'
-            else:
-                print(commits.json())
+                        status = f' 🔴 {idx} versions behind master'
 
-        tree = Tree(f'{lbl}{rev}{follows}{health}')
+        if status != '':
+            tree = Tree(Columns([Align(f'{lbl}{rev}{follows}'), Align(status, align='right')], expand=True))
+        else:
+            tree = Tree(f'{lbl}{rev}{follows}')
     if type(p) == PackageMetadata:
         for k in p.inputs.keys():
-            tree.add(package_metadata_tree(p.inputs[k], k, show_health))
+            tree.add(package_metadata_tree(p.inputs[k], k, show_status))
     return tree
 
 
@@ -295,7 +300,7 @@ def highlight_row(condition: bool, xs: List[str]) -> List[str]:
         return xs
 
 
-def list_package(package_name: str, show_inputs: bool, show_health: bool) -> None:
+def list_package(package_name: str, show_inputs: bool, show_status: bool) -> None:
     reload_packages()
     if package_name != 'all':
         if package_name not in packages.keys():
@@ -306,9 +311,9 @@ def list_package(package_name: str, show_inputs: bool, show_health: bool) -> Non
             return
         listed_package = packages[package_name]
 
-        if show_inputs or show_health:
+        if show_inputs or show_status:
             inputs = get_package_metadata(listed_package)
-            rich.print(package_metadata_tree(inputs, show_health=show_health))
+            rich.print(package_metadata_tree(inputs, show_status=show_status))
         else:
             auth = (
                 {'Authorization': f'Bearer {listed_package.access_token}'}
@@ -850,9 +855,9 @@ def main() -> None:
     list.add_argument('package', nargs='?', default='all', type=str)
     list.add_argument('--inputs', action='store_true', help='show the input dependencies of the selected package')
     list.add_argument(
-        '--health',
+        '--status',
         action='store_true',
-        help='show the input dependencies of the selected package and how stale they are comapred to master',
+        help='show the input dependencies of the selected package and how stale they are compared to the default branch',
     )
     list.add_argument('-h', '--help', action=_HelpListAction)
 
@@ -916,7 +921,7 @@ def main() -> None:
         package_name = PackageName.parse(args.package)
 
         if args.command == 'list':
-            list_package(package_name.base, args.inputs, args.health)
+            list_package(package_name.base, args.inputs, args.status)
 
         elif args.command == 'install':
             install_package(package_name, args.version, args.override, args.verbose, args.refresh)

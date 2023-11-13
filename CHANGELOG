@@ -1,6 +1,6 @@
 # 0.2.4
 
-* Add the `--health` option to `kup list` showing the lag behind master for each dependency
+* Add the `--status` option to `kup list` showing the lag behind the default branch for each dependency
 
 # 0.2.3
 
