@@ -10,6 +10,8 @@ from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
 import giturlparse
 import requests
 import rich
+from rich.align import Align
+from rich.columns import Columns
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.theme import Theme
@@ -113,7 +115,9 @@ def walk_path_nix_meta(nodes: dict, current_node_id: str, path: list[str]) -> st
 
 
 # walk all the inputs recursively and collect only the ones pointing to runtimeverification repos
-def parse_package_metadata(nodes: dict, current_node_id: str, root_level: bool = False) -> Union[PackageMetadata, None]:
+def parse_package_metadata(
+    nodes: dict, current_node_id: str, root_level: bool = False, repo: str = ''
+) -> Union[PackageMetadata, None]:
     if not (
         'original' in nodes[current_node_id]
         and 'owner' in nodes[current_node_id]['original']
@@ -122,7 +126,6 @@ def parse_package_metadata(nodes: dict, current_node_id: str, root_level: bool =
         if not root_level:
             return None
         else:
-            repo = ''
             rev = ''
             org = 'runtimeverification'
     else:
@@ -161,7 +164,7 @@ def get_package_metadata(package: GithubPackage) -> PackageMetadata:
     meta = json.loads(result)
     root_id = meta['locks']['root']
 
-    res = parse_package_metadata(meta['locks']['nodes'], root_id, True)
+    res = parse_package_metadata(meta['locks']['nodes'], root_id, True, package.repo)
     if not res:
         rich.print('❗ [red]Could not parse package metadata!')
         sys.exit(1)
@@ -170,16 +173,38 @@ def get_package_metadata(package: GithubPackage) -> PackageMetadata:
 
 
 # build a rich.Tree of inputs for the given package metadata
-def package_metadata_tree(p: Union[PackageMetadata, Follows], lbl: Union[str, None] = None) -> Tree:
+def package_metadata_tree(
+    p: Union[PackageMetadata, Follows], lbl: Union[str, None] = None, show_status: bool = False
+) -> Tree:
     if lbl is None:
         tree = Tree('Inputs:')
     else:
         rev = f' - github:{p.org}/{p.repo}' if type(p) == PackageMetadata else ''
         follows = (' - follows [green]' + '/'.join(p.follows)) if type(p) == Follows else ''
-        tree = Tree(f'{lbl}{rev}{follows}')
+        status = ''
+        if show_status and type(p) == PackageMetadata:
+            auth = {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
+            commits = requests.get(f'https://api.github.com/repos/{p.org}/{p.repo}/commits', headers=auth)
+            if commits.ok:
+                commits_list = [c['sha'] for c in commits.json()]
+                if p.rev in commits_list:
+                    idx = commits_list.index(p.rev)
+                    if idx == 0:
+                        status = ' 🟢 up to date               '
+                    elif idx == 1:
+                        status = f' 🟠 {idx} version behind master  '
+                    elif idx < 10:
+                        status = f' 🟠 {idx} versions behind master '
+                    else:
+                        status = f' 🔴 {idx} versions behind master'
+
+        if status != '':
+            tree = Tree(Columns([Align(f'{lbl}{rev}{follows}'), Align(status, align='right')], expand=True))
+        else:
+            tree = Tree(f'{lbl}{rev}{follows}')
     if type(p) == PackageMetadata:
         for k in p.inputs.keys():
-            tree.add(package_metadata_tree(p.inputs[k], k))
+            tree.add(package_metadata_tree(p.inputs[k], k, show_status))
     return tree
 
 
@@ -275,7 +300,7 @@ def highlight_row(condition: bool, xs: List[str]) -> List[str]:
         return xs
 
 
-def list_package(package_name: str, show_inputs: bool) -> None:
+def list_package(package_name: str, show_inputs: bool, show_status: bool) -> None:
     reload_packages()
     if package_name != 'all':
         if package_name not in packages.keys():
@@ -286,11 +311,17 @@ def list_package(package_name: str, show_inputs: bool) -> None:
             return
         listed_package = packages[package_name]
 
-        if show_inputs:
+        if show_inputs or show_status:
             inputs = get_package_metadata(listed_package)
-            rich.print(package_metadata_tree(inputs))
+            rich.print(package_metadata_tree(inputs, show_status=show_status))
         else:
-            auth = {'Authorization': f'Bearer {listed_package.access_token}'} if listed_package.access_token else {}
+            auth = (
+                {'Authorization': f'Bearer {listed_package.access_token}'}
+                if listed_package.access_token
+                else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
+                if os.getenv('GH_TOKEN')
+                else {}
+            )
             tags = requests.get(
                 f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/tags', headers=auth
             )
@@ -533,7 +564,13 @@ def ping_nix_store(url: str, access_token: Optional[str] = None) -> Tuple[bool, 
 
 
 def check_github_api_accessible(org: str, repo: str, access_token: Optional[str]) -> bool:
-    auth = {'Authorization': f'Bearer {access_token}'} if access_token else {}
+    auth = (
+        {'Authorization': f'Bearer {access_token}'}
+        if access_token
+        else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
+        if os.getenv('GH_TOKEN')
+        else {}
+    )
     commits = requests.get(f'https://api.github.com/repos/{org}/{repo}/commits', headers=auth)
     return commits.ok
 
@@ -817,6 +854,11 @@ def main() -> None:
     list = subparser.add_parser('list', help='show the active and installed K semantics', add_help=False)
     list.add_argument('package', nargs='?', default='all', type=str)
     list.add_argument('--inputs', action='store_true', help='show the input dependencies of the selected package')
+    list.add_argument(
+        '--status',
+        action='store_true',
+        help='show the input dependencies of the selected package and how stale they are compared to the default branch',
+    )
     list.add_argument('-h', '--help', action=_HelpListAction)
 
     install = subparser.add_parser(
@@ -879,7 +921,7 @@ def main() -> None:
         package_name = PackageName.parse(args.package)
 
         if args.command == 'list':
-            list_package(package_name.base, args.inputs)
+            list_package(package_name.base, args.inputs, args.status)
 
         elif args.command == 'install':
             install_package(package_name, args.version, args.override, args.verbose, args.refresh)
