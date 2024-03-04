@@ -900,6 +900,10 @@ def main() -> None:
     publish.add_argument('uri', type=str)
     publish.add_argument('--keep-days', type=int, help='keep package cached for N days')
 
+    subparser.add_parser(
+        'gc', help='Call Nix garbage collector to remove previously uninstalled packages', add_help=False
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -919,6 +923,14 @@ def main() -> None:
             ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
     elif args.command == 'publish':
         publish_package(args.cache, args.uri, args.keep_days)
+    elif args.command == 'gc':
+        try:
+            subprocess.check_output(
+                ['nix-collect-garbage', '-d'],
+            )
+        except subprocess.CalledProcessError as exc:
+            print(exc)
+            sys.exit(exc.returncode)
     else:
         package_name = PackageName.parse(args.package)
 
