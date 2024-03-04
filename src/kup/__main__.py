@@ -900,7 +900,7 @@ def main() -> None:
     publish.add_argument('uri', type=str)
     publish.add_argument('--keep-days', type=int, help='keep package cached for N days')
 
-    subparser.add_parser('gc', help='Call nix garbage collector to remove previously unistalled packages', add_help=False)
+    subparser.add_parser('gc', help='Call Nix garbage collector to remove previously uninstalled packages', add_help=False)
 
     args = parser.parse_args()
 
