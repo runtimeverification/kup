@@ -87,9 +87,17 @@ ARCH = (
 )
 
 # based on https://github.com/NixOS/nixpkgs/blob/d329d65edb3680f5aa7cc46b364a564bab27f8c7/nixos/modules/config/nix.nix#L114
-# to remove warnings about deprecated nix command 
+# to remove warnings about deprecated nix command
 SHOW_CONFIG_COMMAND = (
-    nix_raw(['eval', '--impure', '--expr', 'if builtins.compareVersions builtins.nixVersion "2.20pre" == -1 then "show-config" else "config show"'], extra_flags=[])
+    nix_raw(
+        [
+            'eval',
+            '--impure',
+            '--expr',
+            'if builtins.compareVersions builtins.nixVersion "2.20pre" == -1 then "show-config" else "config show"',
+        ],
+        extra_flags=[],
+    )
     .decode('utf8')
     .strip()
     .replace('"', '')
