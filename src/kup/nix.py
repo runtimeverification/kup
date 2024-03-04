@@ -86,6 +86,23 @@ ARCH = (
     .replace('"', '')
 )
 
+# based on https://github.com/NixOS/nixpkgs/blob/d329d65edb3680f5aa7cc46b364a564bab27f8c7/nixos/modules/config/nix.nix#L114
+# to remove warnings about deprecated nix command
+SHOW_CONFIG_COMMAND = (
+    nix_raw(
+        [
+            'eval',
+            '--impure',
+            '--expr',
+            'if builtins.compareVersions builtins.nixVersion "2.20pre" == -1 then "show-config" else "config show"',
+        ],
+        extra_flags=[],
+    )
+    .decode('utf8')
+    .strip()
+    .replace('"', '')
+)
+
 USER = pwd.getpwuid(os.getuid())[0]
 USER_IS_ROOT = os.geteuid() == 0
 
@@ -98,9 +115,11 @@ CURRENT_NETRC_FILE = None
 def check_substituters() -> Tuple[bool, bool]:
     global TRUSTED_USERS, CURRENT_SUBSTITUTERS, CURRENT_TRUSTED_PUBLIC_KEYS, CURRENT_NETRC_FILE
     try:
-        result = nix_raw(['show-config', '--json'], extra_flags=[])
+        cmd = SHOW_CONFIG_COMMAND.split()
+        cmd.append('--json')
+        result = nix_raw(cmd, extra_flags=[])
     except Exception:
-        rich.print("⚠️ [yellow]Could not run 'nix show-config'.")
+        rich.print(f"⚠️ [yellow]Could not run 'nix {SHOW_CONFIG_COMMAND}'.")
         return False, False
     config = json.loads(result)
     try:
