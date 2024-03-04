@@ -900,7 +900,9 @@ def main() -> None:
     publish.add_argument('uri', type=str)
     publish.add_argument('--keep-days', type=int, help='keep package cached for N days')
 
-    subparser.add_parser('gc', help='Call Nix garbage collector to remove previously uninstalled packages', add_help=False)
+    subparser.add_parser(
+        'gc', help='Call Nix garbage collector to remove previously uninstalled packages', add_help=False
+    )
 
     args = parser.parse_args()
 
@@ -926,7 +928,7 @@ def main() -> None:
             subprocess.check_output(
                 ['nix-collect-garbage', '-d'],
             )
-        except subprocess.CalledProcessError as exc: 
+        except subprocess.CalledProcessError as exc:
             print(exc)
             sys.exit(exc.returncode)
     else:
