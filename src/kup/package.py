@@ -165,7 +165,7 @@ class LocalPackage(GithubPackage):
         github_package: GithubPackage,
         package_name: PackageName,
         path: str,
-        index: int = -1,
+        index: int | str = -1,
     ):
         self.path = path
         self.index = index
@@ -237,7 +237,7 @@ class ConcretePackage(GithubPackage):
         status: str,
         commit: str,
         tag: Optional[str] = None,
-        index: int = -1,
+        index: int | str = -1,
         ssh_git: bool = False,
         access_token: Optional[str] = None,
         substituters: Optional[list[str]] = None,
@@ -283,7 +283,7 @@ class ConcretePackage(GithubPackage):
             )
 
     @staticmethod
-    def parse(url: str, package: GithubPackage, idx: int, load_versions: bool) -> 'ConcretePackage':
+    def parse(url: str, package: GithubPackage, idx: int | str, load_versions: bool) -> 'ConcretePackage':
         global tag_cache
         if package.ssh_git:
             commit = url.split('&rev=')[1]

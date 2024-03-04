@@ -249,13 +249,15 @@ def reload_packages(load_versions: bool = True) -> None:
     if os.path.exists(f'{os.getenv("HOME")}/.nix-profile/manifest.json'):
         manifest_file = open(f'{os.getenv("HOME")}/.nix-profile/manifest.json')
         manifest = json.loads(manifest_file.read())['elements']
+        if type(manifest) is list:
+            manifest = dict(enumerate(manifest))
         manifest_file.close()
     else:
-        manifest = []
+        manifest = {}
 
     pinned_package_cache_reverse = {v: k for k, v in pinned_package_cache.items()}
     packages = {}
-    for idx, m in enumerate(manifest):
+    for idx, m in manifest.items():
         # fix potential inconsistencies between nix profiles
         # sometimes storing url/originalUrl and sometimes uri/originalUri
         if 'uri' in m:
@@ -657,7 +659,7 @@ def add_new_package(
         substituters_to_add = []
         trusted_public_keys_to_add = []
 
-        for (s, pub_key) in zip(substituters, trusted_public_keys):
+        for (s, pub_key) in zip(substituters, trusted_public_keys, strict=True):
             if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS:
                 pass
 
