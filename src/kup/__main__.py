@@ -659,7 +659,7 @@ def add_new_package(
         substituters_to_add = []
         trusted_public_keys_to_add = []
 
-        for (s, pub_key) in zip(substituters, trusted_public_keys, strict=True):
+        for (s, pub_key) in zip(substituters, trusted_public_keys):
             if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS:
                 pass
 
