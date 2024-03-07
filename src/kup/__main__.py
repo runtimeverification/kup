@@ -156,9 +156,12 @@ def parse_package_metadata(
     return PackageMetadata(repo, rev, org, inputs)
 
 
-def get_package_metadata(package: GithubPackage) -> PackageMetadata:
-    try:
+def get_package_metadata(package: Union[ConcretePackage, GithubPackage]) -> PackageMetadata:
+    if type(package) == ConcretePackage:
+        path, git_token_options = package.concrete_repo_path_with_access
+    else:
         path, git_token_options = package.repo_path_with_access()
+    try:
         result = nix(
             ['flake', 'metadata', path, '--json'] + git_token_options, is_install=False, refresh=True, verbose=VERBOSE
         )
@@ -305,7 +308,12 @@ def highlight_row(condition: bool, xs: List[str]) -> List[str]:
         return xs
 
 
-def list_package(package_name: str, show_inputs: bool, show_status: bool) -> None:
+def list_package(
+    package_name: str,
+    show_inputs: bool,
+    show_status: bool,
+    version: Optional[str] = None,
+) -> None:
     reload_packages()
     if package_name != 'all':
         if package_name not in packages.keys():
@@ -314,7 +322,8 @@ def list_package(package_name: str, show_inputs: bool, show_status: bool) -> Non
                 "[/]Use '[blue]kup list[/]' to see all the available packages."
             )
             return
-        listed_package = packages[package_name]
+
+        listed_package = packages[package_name].concrete(version, []) if version else packages[package_name]
 
         if show_inputs or show_status:
             inputs = get_package_metadata(listed_package)
@@ -864,6 +873,7 @@ def main() -> None:
         'list', help='show the active and installed K semantics', add_help=False, parents=[verbose_arg]
     )
     list.add_argument('package', nargs='?', default='all', type=str)
+    list.add_argument('--version', type=str, help='print information about the given version of the package')
     list.add_argument('--inputs', action='store_true', help='show the input dependencies of the selected package')
     list.add_argument(
         '--status',
@@ -953,7 +963,7 @@ def main() -> None:
         package_name = PackageName.parse(args.package)
 
         if args.command == 'list':
-            list_package(package_name.base, args.inputs, args.status)
+            list_package(package_name.base, args.inputs, args.status, args.version)
 
         elif args.command == 'install':
             install_package(package_name, args.version, args.override)
