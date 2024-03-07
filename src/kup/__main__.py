@@ -366,7 +366,11 @@ def list_package(package_name: str, show_inputs: bool, show_status: bool) -> Non
         table_data = [['Package name (alias)', 'Installed version', 'Status'],] + [
             [
                 str(PackageName(alias, p.package_name.ext).pretty_name),
-                f'{p.commit}{" (" + p.tag + ")" if p.tag else ""}' if type(p) == ConcretePackage else '\033[3mlocal checkout\033[0m' if type(p) == LocalPackage else '',
+                f'{p.commit}{" (" + p.tag + ")" if p.tag else ""}'
+                if type(p) == ConcretePackage
+                else '\033[3mlocal checkout\033[0m'
+                if type(p) == LocalPackage
+                else '',
                 p.status if type(p) == ConcretePackage else AVAILABLE,
             ]
             for alias, p in packages.items()
