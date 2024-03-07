@@ -49,15 +49,15 @@ Adding the `--inputs` flag will print out the dependency tree of the given packa
 ```
 ➜ kup list kevm --inputs
 Inputs:
-├── blockchain-k-plugin - github:runtimeverification/blockchain-k-plugin 8fdc74e
+├── blockchain-k-plugin - github:runtimeverification/blockchain-k-plugin (8fdc74e)
 ├── haskell-backend - follows k-framework/haskell-backend
-├── k-framework - github:runtimeverification/k 43f56ac
-│   ├── haskell-backend - github:runtimeverification/haskell-backend 4c3c436
-│   ├── llvm-backend - github:runtimeverification/llvm-backend 94e8f4b
-│   │   └── immer-src - github:runtimeverification/immer 198c2ae
-│   └── rv-utils - github:runtimeverification/rv-nix-tools 7026604
+├── k-framework - github:runtimeverification/k (43f56ac)
+│   ├── haskell-backend - github:runtimeverification/haskell-backend (4c3c436)
+│   ├── llvm-backend - github:runtimeverification/llvm-backend (94e8f4b)
+│   │   └── immer-src - github:runtimeverification/immer (198c2ae)
+│   └── rv-utils - github:runtimeverification/rv-nix-tools (7026604)
 ├── pyk - github:runtimeverification/pyk 4240899
-└── rv-utils_2 - github:runtimeverification/rv-nix-tools 7026604
+└── rv-utils_2 - github:runtimeverification/rv-nix-tools (7026604)
 ```
 
 `kup` allows any of these dependencies to be overridden when installing, updating or opening a temporary shell. For example, to override the `llvm-backend` dependency, you can do a local checkout of [github.com/runtimeverification/llvm-backend](github.com/runtimeverification/llvm-backend) and then build `kevm` against the checkout via
