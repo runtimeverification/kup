@@ -51,7 +51,7 @@ def nix_raw(
         my_env['GC_DONT_GC'] = '1'
     cmd = ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags
     if verbose:
-        print(' '.join(cmd))
+        print('[kup]', ' '.join(cmd))
     if exit_on_error:
         try:
             output = subprocess.check_output(
@@ -443,14 +443,21 @@ def nix_detach(
     verbosity_flag = ['--print-build-logs', '-vv'] if verbose else []
     refresh_flag = ['--refresh'] if refresh else []
 
-    os.execve(
-        nix,
+    cmd = (
         [nix]
         + args
         + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes']
         + extra_subs_and_keys
         + verbosity_flag
-        + refresh_flag,
+        + refresh_flag
+    )
+
+    if verbose:
+        print('[kup]', ' '.join(cmd))
+
+    os.execve(
+        nix,
+        cmd,
         my_env,
     )
 

@@ -40,6 +40,7 @@ from .nix import (
 )
 from .package import (
     AVAILABLE,
+    INSTALLED,
     ConcretePackage,
     Follows,
     GithubPackage,
@@ -52,6 +53,7 @@ from .package import (
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
 KUP_DIR = os.path.split(os.path.abspath(__file__))[0]  # i.e. /path/to/dir/
+VERBOSE = False
 
 available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'kup', PackageName('kup')),
@@ -157,7 +159,9 @@ def parse_package_metadata(
 def get_package_metadata(package: GithubPackage) -> PackageMetadata:
     try:
         path, git_token_options = package.repo_path_with_access()
-        result = nix(['flake', 'metadata', path, '--json'] + git_token_options, is_install=False)
+        result = nix(
+            ['flake', 'metadata', path, '--json'] + git_token_options, is_install=False, refresh=True, verbose=VERBOSE
+        )
     except Exception:
         rich.print('❗ [red]Could not get package metadata!')
         sys.exit(1)
@@ -371,7 +375,7 @@ def list_package(package_name: str, show_inputs: bool, show_status: bool) -> Non
                 else '\033[3mlocal checkout\033[0m'
                 if type(p) == LocalPackage
                 else '',
-                p.status if type(p) == ConcretePackage else AVAILABLE,
+                p.status if type(p) == ConcretePackage else INSTALLED if type(p) == LocalPackage else AVAILABLE,
             ]
             for alias, p in packages.items()
         ]
@@ -453,8 +457,6 @@ def install_package(
     package_name: PackageName,
     package_version: Optional[str],
     package_overrides: List[List[str]],
-    verbose: bool,
-    refresh: bool,
 ) -> None:
     reload_packages()
     if package_name.base not in packages:
@@ -472,13 +474,13 @@ def install_package(
         rich.print(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
         nix(
             ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
-            verbose=verbose,
+            verbose=VERBOSE,
         )
         if package_name.base in installed_packages:
             nix(['profile', 'remove', str(package.index)], is_install=False)
         nix(
             ['profile', 'install', pinned_package_cache[package.uri]],
-            verbose=verbose,
+            verbose=VERBOSE,
         )
     else:
         rich.print(f" ⌛ Building '[green]{package_name.pretty_name}[/]' ...")
@@ -489,8 +491,7 @@ def install_package(
             ['build', package.uri, '--no-link'] + overrides + git_token_options,
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
-            verbose=verbose,
-            refresh=refresh,
+            verbose=VERBOSE,
         )
         if package_name.base in installed_packages:
             nix(['profile', 'remove', str(package.index)], is_install=False)
@@ -498,7 +499,7 @@ def install_package(
             ['profile', 'install', package.uri] + overrides + git_token_options,
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
-            verbose=verbose,
+            verbose=VERBOSE,
         )
 
     verb = 'updated' if package_name.base in installed_packages else 'installed'
@@ -610,7 +611,9 @@ def add_new_package(
                 nix(
                     ['flake', 'metadata', path, '--json'] + git_token_options,
                     is_install=False,
+                    refresh=True,
                     exit_on_error=False,
+                    verbose=VERBOSE,
                 )
             else:
                 rich.print('Detected a private repository without a GitHub access token, using git+ssh...')
@@ -619,7 +622,9 @@ def add_new_package(
                 nix(
                     ['flake', 'metadata', path, '--json'] + git_token_options,
                     is_install=False,
+                    refresh=True,
                     exit_on_error=False,
+                    verbose=VERBOSE,
                 )
         except Exception:
             rich.print(
@@ -739,7 +744,7 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
             git_url = giturlparse.parse(output.decode('utf8').strip())
             owner = git_url.owner
             repo = git_url.name
-            result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False)
+            result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False, refresh=True, verbose=VERBOSE)
         except Exception:
             rich.print('❗ [red]Could not get package metadata!')
             sys.exit(1)
@@ -751,7 +756,7 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
             sys.exit(1)
     elif uri_or_path.startswith('github:'):
         try:
-            result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False)
+            result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False, refresh=True, verbose=VERBOSE)
         except Exception:
             rich.print('❗ [red]Could not get package metadata!')
             sys.exit(1)
@@ -770,7 +775,7 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
         sys.exit(1)
     cache_key = f'github:{owner}/{repo}/{rev}#{PackageName(package_name)}'
     try:
-        result = nix(['build', f'{uri}#{PackageName(package_name)}', '--no-link', '--json'])
+        result = nix(['build', f'{uri}#{PackageName(package_name)}', '--no-link', '--json'], verbose=VERBOSE)
         build_meta = json.loads(result)
     except Exception:
         rich.print('❗ [red]Could not build package!')
@@ -833,6 +838,7 @@ class _HelpAddAction(_HelpAction):
 
 
 def main() -> None:
+    global VERBOSE
     parser = ArgumentParser(
         description='The K Framework installer',
         prog='kup',
@@ -845,18 +851,18 @@ def main() -> None:
          """
         ),
     )
+    verbose_arg = ArgumentParser(add_help=False)
+    verbose_arg.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
     shared_args = ArgumentParser(add_help=False)
     shared_args.add_argument('package', type=str)
     shared_args.add_argument('--version', type=str, help='install the given version of the package')
     shared_args.add_argument(
         '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
     )
-    shared_args.add_argument('--verbose', '-v', default=False, action='store_true', help='verbose output from nix.')
-    shared_args.add_argument(
-        '--refresh', default=False, action='store_true', help='force a re-fetch when pulling from a GitHub branch'
-    )
     subparser = parser.add_subparsers(dest='command')
-    list = subparser.add_parser('list', help='show the active and installed K semantics', add_help=False)
+    list = subparser.add_parser(
+        'list', help='show the active and installed K semantics', add_help=False, parents=[verbose_arg]
+    )
     list.add_argument('package', nargs='?', default='all', type=str)
     list.add_argument('--inputs', action='store_true', help='show the input dependencies of the selected package')
     list.add_argument(
@@ -867,22 +873,26 @@ def main() -> None:
     list.add_argument('-h', '--help', action=_HelpListAction)
 
     install = subparser.add_parser(
-        'install', help='download and install the stated package', add_help=False, parents=[shared_args]
+        'install', help='download and install the stated package', add_help=False, parents=[verbose_arg, shared_args]
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
 
-    uninstall = subparser.add_parser('uninstall', help="remove the given package from the user's PATH")
+    uninstall = subparser.add_parser(
+        'uninstall', help="remove the given package from the user's PATH", parents=[verbose_arg]
+    )
     uninstall.add_argument('package', type=str)
-    uninstall.add_argument('--verbose', action='store_true', help='verbose output from nix')
 
     shell = subparser.add_parser(
-        'shell', help='add the selected package to the current shell (temporary)', add_help=False, parents=[shared_args]
+        'shell',
+        help='add the selected package to the current shell (temporary)',
+        add_help=False,
+        parents=[verbose_arg, shared_args],
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
 
-    subparser.add_parser('doctor', help='check if kup is installed correctly')
+    subparser.add_parser('doctor', help='check if kup is installed correctly', parents=[verbose_arg])
 
-    add = subparser.add_parser('add', help='add a private package to kup', add_help=False)
+    add = subparser.add_parser('add', help='add a private package to kup', add_help=False, parents=[verbose_arg])
     add.add_argument('uri', type=str)
     add.add_argument('package', type=str)
     add.add_argument(
@@ -898,16 +908,21 @@ def main() -> None:
     add.add_argument('--strict', action='store_true', help='check if the package being added exists')
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
-    publish = subparser.add_parser('publish', help='push a package to a cachix cache')
+    publish = subparser.add_parser('publish', help='push a package to a cachix cache', parents=[verbose_arg])
     publish.add_argument('cache', type=str)
     publish.add_argument('uri', type=str)
     publish.add_argument('--keep-days', type=int, help='keep package cached for N days')
 
     subparser.add_parser(
-        'gc', help='Call Nix garbage collector to remove previously uninstalled packages', add_help=False
+        'gc',
+        help='Call Nix garbage collector to remove previously uninstalled packages',
+        add_help=False,
+        parents=[verbose_arg],
     )
 
     args = parser.parse_args()
+    if args.verbose:
+        VERBOSE = True
 
     if args.command is None:
         parser.print_help()
@@ -941,7 +956,7 @@ def main() -> None:
             list_package(package_name.base, args.inputs, args.status)
 
         elif args.command == 'install':
-            install_package(package_name, args.version, args.override, args.verbose, args.refresh)
+            install_package(package_name, args.version, args.override)
         elif args.command == 'uninstall':
             uninstall_package(package_name.base)
         elif args.command == 'add':
@@ -974,11 +989,11 @@ def main() -> None:
                 rich.print(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
                 nix(
                     ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
-                    verbose=args.verbose,
+                    verbose=VERBOSE,
                 )
                 nix_detach(
                     ['shell', pinned_package_cache[package.uri]],
-                    verbose=args.verbose,
+                    verbose=VERBOSE,
                 )
             else:
                 rich.print(f" ⌛ Building '[green]{package_name.pretty_name}[/]' ...")
@@ -987,8 +1002,7 @@ def main() -> None:
                     ['shell', package.uri] + overrides + git_token_options,
                     extra_substituters=package.substituters,
                     extra_public_keys=package.public_keys,
-                    verbose=args.verbose,
-                    refresh=args.refresh,
+                    verbose=VERBOSE,
                 )
 
 
