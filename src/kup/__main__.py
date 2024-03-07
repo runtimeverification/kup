@@ -851,15 +851,18 @@ def main() -> None:
          """
         ),
     )
+    verbose_arg = ArgumentParser(add_help=False)
+    verbose_arg.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
     shared_args = ArgumentParser(add_help=False)
     shared_args.add_argument('package', type=str)
     shared_args.add_argument('--version', type=str, help='install the given version of the package')
     shared_args.add_argument(
         '--override', type=str, nargs=2, action='append', help='override an input dependency of a package'
     )
-    shared_args.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
     subparser = parser.add_subparsers(dest='command')
-    list = subparser.add_parser('list', help='show the active and installed K semantics', add_help=False)
+    list = subparser.add_parser(
+        'list', help='show the active and installed K semantics', add_help=False, parents=[verbose_arg]
+    )
     list.add_argument('package', nargs='?', default='all', type=str)
     list.add_argument('--inputs', action='store_true', help='show the input dependencies of the selected package')
     list.add_argument(
@@ -870,22 +873,26 @@ def main() -> None:
     list.add_argument('-h', '--help', action=_HelpListAction)
 
     install = subparser.add_parser(
-        'install', help='download and install the stated package', add_help=False, parents=[shared_args]
+        'install', help='download and install the stated package', add_help=False, parents=[verbose_arg, shared_args]
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
 
-    uninstall = subparser.add_parser('uninstall', help="remove the given package from the user's PATH")
+    uninstall = subparser.add_parser(
+        'uninstall', help="remove the given package from the user's PATH", parents=[verbose_arg]
+    )
     uninstall.add_argument('package', type=str)
-    uninstall.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
 
     shell = subparser.add_parser(
-        'shell', help='add the selected package to the current shell (temporary)', add_help=False, parents=[shared_args]
+        'shell',
+        help='add the selected package to the current shell (temporary)',
+        add_help=False,
+        parents=[verbose_arg, shared_args],
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
 
-    subparser.add_parser('doctor', help='check if kup is installed correctly')
+    subparser.add_parser('doctor', help='check if kup is installed correctly', parents=[verbose_arg])
 
-    add = subparser.add_parser('add', help='add a private package to kup', add_help=False)
+    add = subparser.add_parser('add', help='add a private package to kup', add_help=False, parents=[verbose_arg])
     add.add_argument('uri', type=str)
     add.add_argument('package', type=str)
     add.add_argument(
@@ -901,13 +908,16 @@ def main() -> None:
     add.add_argument('--strict', action='store_true', help='check if the package being added exists')
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
-    publish = subparser.add_parser('publish', help='push a package to a cachix cache')
+    publish = subparser.add_parser('publish', help='push a package to a cachix cache', parents=[verbose_arg])
     publish.add_argument('cache', type=str)
     publish.add_argument('uri', type=str)
     publish.add_argument('--keep-days', type=int, help='keep package cached for N days')
 
     subparser.add_parser(
-        'gc', help='Call Nix garbage collector to remove previously uninstalled packages', add_help=False
+        'gc',
+        help='Call Nix garbage collector to remove previously uninstalled packages',
+        add_help=False,
+        parents=[verbose_arg],
     )
 
     args = parser.parse_args()
