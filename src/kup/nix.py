@@ -51,7 +51,7 @@ def nix_raw(
         my_env['GC_DONT_GC'] = '1'
     cmd = ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags
     if verbose:
-        print("[kup]", ' '.join(cmd))
+        print('[kup]', ' '.join(cmd))
     if exit_on_error:
         try:
             output = subprocess.check_output(
@@ -453,7 +453,7 @@ def nix_detach(
     )
 
     if verbose:
-        print("[kup]", ' '.join(cmd))
+        print('[kup]', ' '.join(cmd))
 
     os.execve(
         nix,
