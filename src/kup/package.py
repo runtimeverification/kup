@@ -106,7 +106,7 @@ class GithubPackage:
 
     def url(self, override_branch_tag_or_commit: Optional[str] = None) -> str:
         path, git_token_options = self.repo_path_with_access(override_branch_tag_or_commit)
-        result = nix(['flake', 'metadata', path, '--json'] + git_token_options, is_install=False)
+        result = nix(['flake', 'metadata', path, '--json'] + git_token_options, is_install=False, refresh=True)
         meta = json.loads(result)
         return meta['url']
 
