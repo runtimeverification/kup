@@ -931,7 +931,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    if args.verbose:
+    if 'verbose' in args and args.verbose:
         VERBOSE = True
 
     if args.command is None:
