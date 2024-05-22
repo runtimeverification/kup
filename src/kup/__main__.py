@@ -484,6 +484,7 @@ def install_package(
         nix(
             ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
             verbose=VERBOSE,
+            refresh=True,
         )
         if package_name.base in installed_packages:
             nix(['profile', 'remove', str(package.index)], is_install=False)
@@ -1000,6 +1001,7 @@ def main() -> None:
                 nix(
                     ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
                     verbose=VERBOSE,
+                    refresh=True,
                 )
                 nix_detach(
                     ['shell', pinned_package_cache[package.uri]],
