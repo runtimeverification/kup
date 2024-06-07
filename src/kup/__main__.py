@@ -65,8 +65,7 @@ available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol')),
     GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore-exec')),
     GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore-rpc')),
-    GithubPackage('runtimeverification', 'hs-backend-booster', PackageName('kore-rpc-booster'), 'main'),
-    GithubPackage('runtimeverification', 'pyk', PackageName('pyk')),
+    GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore-rpc-booster')),
 ]
 
 
