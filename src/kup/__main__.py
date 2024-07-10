@@ -63,10 +63,7 @@ available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'plutus-core-semantics', PackageName('kplutus')),
     GithubPackage('runtimeverification', 'mir-semantics', PackageName('kmir')),
     GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol')),
-    GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore-exec')),
-    GithubPackage('runtimeverification', 'haskell-backend', PackageName('kore-rpc')),
-    GithubPackage('runtimeverification', 'hs-backend-booster', PackageName('kore-rpc-booster'), 'main'),
-    GithubPackage('runtimeverification', 'pyk', PackageName('pyk')),
+    GithubPackage('runtimeverification', 'kasmer-multiversx', PackageName('kmxwasm')),
 ]
 
 
