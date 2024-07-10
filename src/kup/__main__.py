@@ -499,6 +499,7 @@ def install_package(
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
             verbose=VERBOSE,
+            refresh=True,
         )
         if package_name.base in installed_packages:
             nix(['profile', 'remove', str(package.index)], is_install=False)
