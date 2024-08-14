@@ -59,7 +59,7 @@ available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'kup', PackageName('kup')),
     GithubPackage('runtimeverification', 'k', PackageName('k')),
     GithubPackage('runtimeverification', 'avm-semantics', PackageName('kavm')),
-    GithubPackage('runtimeverification', 'evm-semantics', PackageName('kevm')),
+    GithubPackage('runtimeverification', 'evm-semantics', PackageName('kevm'), branch='release'),
     GithubPackage('runtimeverification', 'plutus-core-semantics', PackageName('kplutus')),
     GithubPackage('runtimeverification', 'mir-semantics', PackageName('kmir')),
     GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol')),
@@ -339,8 +339,9 @@ def list_package(
             if not tags.ok:
                 rich.print('❗ Listing versions is unsupported for private packages accessed over SSH.')
                 return
+            branch = f'?sha={listed_package.branch}' if listed_package.branch else ''
             commits = requests.get(
-                f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/commits', headers=auth
+                f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/commits{branch}', headers=auth
             )
             tagged_releases = {t['commit']['sha']: t for t in tags.json()}
             all_releases = [
