@@ -1,6 +1,7 @@
 import configparser
 import json
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -54,6 +55,8 @@ console = Console(theme=Theme({'markdown.code': 'green'}))
 
 KUP_DIR = os.path.split(os.path.abspath(__file__))[0]  # i.e. /path/to/dir/
 VERBOSE = False
+
+TERMINAL_WIDTH, _ = shutil.get_terminal_size((80, 20))
 
 available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'kup', PackageName('kup')),
@@ -376,7 +379,7 @@ def list_package(
         table_data = [['Package name (alias)', 'Installed version', 'Status'],] + [
             [
                 str(PackageName(alias, p.package_name.ext).pretty_name),
-                f'{p.commit}{" (" + p.tag + ")" if p.tag else ""}'
+                f'{p.commit[:7] if TERMINAL_WIDTH < 80 else p.commit}{" (" + p.tag + ")" if p.tag else ""}'
                 if type(p) == ConcretePackage
                 else '\033[3mlocal checkout\033[0m'
                 if type(p) == LocalPackage
