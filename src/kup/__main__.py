@@ -62,7 +62,7 @@ available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'evm-semantics', PackageName('kevm'), branch='release'),
     GithubPackage('runtimeverification', 'plutus-core-semantics', PackageName('kplutus')),
     GithubPackage('runtimeverification', 'mir-semantics', PackageName('kmir')),
-    GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol')),
+    GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol'), branch='release'),
     GithubPackage('runtimeverification', 'kasmer-multiversx', PackageName('kmxwasm')),
 ]
 
