@@ -64,6 +64,7 @@ available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'mir-semantics', PackageName('kmir')),
     GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol'), branch='release'),
     GithubPackage('runtimeverification', 'kasmer-multiversx', PackageName('kmxwasm')),
+    GithubPackage('runtimeverification', 'komet', PackageName('komet')),
 ]
 
 
