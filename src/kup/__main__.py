@@ -889,7 +889,10 @@ def main() -> None:
     install.add_argument('-h', '--help', action=_HelpInstallAction)
 
     update = subparser.add_parser(
-        'update', help='update the stated package (alias of install)', add_help=False, parents=[verbose_arg, shared_args]
+        'update',
+        help='update the stated package (alias of install)',
+        add_help=False,
+        parents=[verbose_arg, shared_args],
     )
     update.add_argument('-h', '--help', action=_HelpInstallAction)
 
