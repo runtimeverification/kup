@@ -1,24 +1,41 @@
 {
   description = "kup";
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-22.05";
+    nixpkgs.url = "nixpkgs/nixos-24.05";
     flake-utils.url = "github:numtide/flake-utils";
-    poetry2nix.url = "github:nix-community/poetry2nix";
+    poetry2nix.url = "github:nix-community/poetry2nix/2024.9.538703";
   };
-  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
+  outputs = { self, nixpkgs, flake-utils, ... }@inputs:
     let
-      allOverlays = [
-        poetry2nix.overlay
-        (final: prev: {
-          kup = prev.poetry2nix.mkPoetryApplication {
+      overlay = (final: prev:
+        let poetry2nix = inputs.poetry2nix.lib.mkPoetry2Nix { pkgs = prev; };
+        in {
+          kup = poetry2nix.mkPoetryApplication {
             python = prev.python39;
             projectDir = ./.;
-            groups = [];
+            groups = [ ];
             # We remove `"dev"` from `checkGroups`, so that poetry2nix does not try to resolve dev dependencies.
-            checkGroups = [];
-           };
-        })
-      ];
+            checkGroups = [ ];
+            overrides = poetry2nix.overrides.withDefaults
+              (finalPython: prevPython: {
+                git-url-parse = prevPython.git-url-parse.overridePythonAttrs
+                  (old: {
+                    propagatedBuildInputs = (old.propagatedBuildInputs or [ ])
+                      ++ [ finalPython.setuptools ];
+                  });
+                tinynetrc = prevPython.tinynetrc.overridePythonAttrs (old: {
+                  propagatedBuildInputs = (old.propagatedBuildInputs or [ ])
+                    ++ [ finalPython.setuptools ];
+                });
+              });
+
+            nativeBuildInputs = [ prev.makeWrapper ];
+            postInstall = ''
+              wrapProgram "$out/bin/kup" \
+                --set PINNED_NIX "${prev.nixVersions.nix_2_23}/bin/nix"
+            '';
+          };
+        });
     in flake-utils.lib.eachSystem [
       "x86_64-linux"
       "x86_64-darwin"
@@ -28,14 +45,14 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = allOverlays;
+          overlays = [ overlay ];
         };
-      in rec {
+      in {
         packages = {
           inherit (pkgs) kup;
+          default = pkgs.kup;
         };
-        defaultPackage = packages.kup;
       }) // {
-        overlay = nixpkgs.lib.composeManyExtensions allOverlays;
+        inherit overlay;
       };
 }

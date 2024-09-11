@@ -54,6 +54,7 @@ console = Console(theme=Theme({'markdown.code': 'green'}))
 
 KUP_DIR = os.path.split(os.path.abspath(__file__))[0]  # i.e. /path/to/dir/
 VERBOSE = False
+USE_SYSTEM_NIX = False
 
 available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'kup', PackageName('kup')),
@@ -161,7 +162,11 @@ def get_package_metadata(package: Union[ConcretePackage, GithubPackage]) -> Pack
         path, git_token_options = package.repo_path_with_access()
     try:
         result = nix(
-            ['flake', 'metadata', path, '--json'] + git_token_options, is_install=False, refresh=True, verbose=VERBOSE
+            ['flake', 'metadata', path, '--json'] + git_token_options,
+            is_install=False,
+            refresh=True,
+            verbose=VERBOSE,
+            use_system_nix=USE_SYSTEM_NIX,
         )
     except Exception:
         rich.print('❗ [red]Could not get package metadata!')
@@ -483,6 +488,7 @@ def install_package(
         nix(
             ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
             verbose=VERBOSE,
+            use_system_nix=USE_SYSTEM_NIX,
             refresh=True,
         )
         if package_name.base in installed_packages:
@@ -501,6 +507,7 @@ def install_package(
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
             verbose=VERBOSE,
+            use_system_nix=USE_SYSTEM_NIX,
             refresh=True,
         )
         if package_name.base in installed_packages:
@@ -510,6 +517,7 @@ def install_package(
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
             verbose=VERBOSE,
+            use_system_nix=USE_SYSTEM_NIX,
         )
 
     verb = 'updated' if package_name.base in installed_packages else 'installed'
@@ -553,7 +561,7 @@ def uninstall_package(package_name: str) -> None:
             return uninstall_package(package_name)
     package = packages[package_name]
     if type(package) == ConcretePackage or type(package) == LocalPackage:
-        nix(['profile', 'remove', str(package.index)], is_install=False)
+        nix(['profile', 'remove', str(package.index)], is_install=False, verbose=VERBOSE, use_system_nix=USE_SYSTEM_NIX)
 
 
 def ping_nix_store(url: str, access_token: Optional[str] = None) -> Tuple[bool, Optional[str]]:
@@ -624,6 +632,7 @@ def add_new_package(
                     refresh=True,
                     exit_on_error=False,
                     verbose=VERBOSE,
+                    use_system_nix=USE_SYSTEM_NIX,
                 )
             else:
                 rich.print('Detected a private repository without a GitHub access token, using git+ssh...')
@@ -635,6 +644,7 @@ def add_new_package(
                     refresh=True,
                     exit_on_error=False,
                     verbose=VERBOSE,
+                    use_system_nix=USE_SYSTEM_NIX,
                 )
         except Exception:
             rich.print(
@@ -723,6 +733,7 @@ def add_new_package(
                 is_install=False,
                 extra_substituters=substituters,
                 extra_public_keys=trusted_public_keys,
+                use_system_nix=USE_SYSTEM_NIX,
             )
 
         with open(user_packages_config_path, 'w') as configfile:
@@ -754,7 +765,13 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
             git_url = giturlparse.parse(output.decode('utf8').strip())
             owner = git_url.owner
             repo = git_url.name
-            result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False, refresh=True, verbose=VERBOSE)
+            result = nix(
+                ['flake', 'metadata', uri_or_path, '--json'],
+                is_install=False,
+                refresh=True,
+                verbose=VERBOSE,
+                use_system_nix=USE_SYSTEM_NIX,
+            )
         except Exception:
             rich.print('❗ [red]Could not get package metadata!')
             sys.exit(1)
@@ -766,7 +783,13 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
             sys.exit(1)
     elif uri_or_path.startswith('github:'):
         try:
-            result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False, refresh=True, verbose=VERBOSE)
+            result = nix(
+                ['flake', 'metadata', uri_or_path, '--json'],
+                is_install=False,
+                refresh=True,
+                verbose=VERBOSE,
+                use_system_nix=USE_SYSTEM_NIX,
+            )
         except Exception:
             rich.print('❗ [red]Could not get package metadata!')
             sys.exit(1)
@@ -785,7 +808,11 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
         sys.exit(1)
     cache_key = f'github:{owner}/{repo}/{rev}#{PackageName(package_name)}'
     try:
-        result = nix(['build', f'{uri}#{PackageName(package_name)}', '--no-link', '--json'], verbose=VERBOSE)
+        result = nix(
+            ['build', f'{uri}#{PackageName(package_name)}', '--no-link', '--json'],
+            verbose=VERBOSE,
+            use_system_nix=USE_SYSTEM_NIX,
+        )
         build_meta = json.loads(result)
     except Exception:
         rich.print('❗ [red]Could not build package!')
@@ -848,7 +875,7 @@ class _HelpAddAction(_HelpAction):
 
 
 def main() -> None:
-    global VERBOSE
+    global VERBOSE, USE_SYSTEM_NIX
     parser = ArgumentParser(
         description='The K Framework installer',
         prog='kup',
@@ -861,8 +888,11 @@ def main() -> None:
          """
         ),
     )
-    verbose_arg = ArgumentParser(add_help=False)
-    verbose_arg.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
+    common = ArgumentParser(add_help=False)
+    common.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
+    common.add_argument(
+        '--use-system-nix', action='store_true', help='use the system provided nix version, instead of the pinned one'
+    )
     shared_args = ArgumentParser(add_help=False)
     shared_args.add_argument('package', type=str)
     shared_args.add_argument('--version', type=str, help='install the given version of the package')
@@ -871,7 +901,7 @@ def main() -> None:
     )
     subparser = parser.add_subparsers(dest='command')
     list = subparser.add_parser(
-        'list', help='show the active and installed K semantics', add_help=False, parents=[verbose_arg]
+        'list', help='show the active and installed K semantics', add_help=False, parents=[common]
     )
     list.add_argument('package', nargs='?', default='all', type=str)
     list.add_argument('--version', type=str, help='print information about the given version of the package')
@@ -884,12 +914,12 @@ def main() -> None:
     list.add_argument('-h', '--help', action=_HelpListAction)
 
     install = subparser.add_parser(
-        'install', help='download and install the stated package', add_help=False, parents=[verbose_arg, shared_args]
+        'install', help='download and install the stated package', add_help=False, parents=[common, shared_args]
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
 
     uninstall = subparser.add_parser(
-        'uninstall', help="remove the given package from the user's PATH", parents=[verbose_arg]
+        'uninstall', help="remove the given package from the user's PATH", parents=[common]
     )
     uninstall.add_argument('package', type=str)
 
@@ -897,13 +927,13 @@ def main() -> None:
         'shell',
         help='add the selected package to the current shell (temporary)',
         add_help=False,
-        parents=[verbose_arg, shared_args],
+        parents=[common, shared_args],
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
 
-    subparser.add_parser('doctor', help='check if kup is installed correctly', parents=[verbose_arg])
+    subparser.add_parser('doctor', help='check if kup is installed correctly', parents=[common])
 
-    add = subparser.add_parser('add', help='add a private package to kup', add_help=False, parents=[verbose_arg])
+    add = subparser.add_parser('add', help='add a private package to kup', add_help=False, parents=[common])
     add.add_argument('uri', type=str)
     add.add_argument('package', type=str)
     add.add_argument(
@@ -919,7 +949,7 @@ def main() -> None:
     add.add_argument('--strict', action='store_true', help='check if the package being added exists')
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
-    publish = subparser.add_parser('publish', help='push a package to a cachix cache', parents=[verbose_arg])
+    publish = subparser.add_parser('publish', help='push a package to a cachix cache', parents=[common])
     publish.add_argument('cache', type=str)
     publish.add_argument('uri', type=str)
     publish.add_argument('--keep-days', type=int, help='keep package cached for N days')
@@ -928,13 +958,14 @@ def main() -> None:
         'gc',
         help='Call Nix garbage collector to remove previously uninstalled packages',
         add_help=False,
-        parents=[verbose_arg],
+        parents=[common],
     )
 
     args = parser.parse_args()
     if 'verbose' in args and args.verbose:
         VERBOSE = True
-
+    if 'use_system_nix' in args and args.use_system_nix:
+        USE_SYSTEM_NIX = True
     if args.command is None:
         parser.print_help()
     elif 'help' in args and args.help:
@@ -1002,6 +1033,7 @@ def main() -> None:
                     ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
                     verbose=VERBOSE,
                     refresh=True,
+                    use_system_nix=USE_SYSTEM_NIX,
                 )
                 nix_detach(
                     ['shell', pinned_package_cache[package.uri]],
@@ -1015,6 +1047,7 @@ def main() -> None:
                     extra_substituters=package.substituters,
                     extra_public_keys=package.public_keys,
                     verbose=VERBOSE,
+                    use_system_nix=USE_SYSTEM_NIX,
                 )
 
 

@@ -38,6 +38,8 @@ def nix_substituters(subsituters: List[str], public_keys: List[str]) -> List[str
 
 DEFAULT_NIX_SUBSTITUTER = nix_substituters([K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY, K_FRAMEWORK_BINARY_PUBLIC_KEY])
 
+SYSTEM_NIX = subprocess.check_output(['which', 'nix']).decode('utf8').strip()
+PINNED_NIX = os.getenv('PINNED_NIX', default=SYSTEM_NIX)
 
 def nix_raw(
     args: List[str],
@@ -45,11 +47,13 @@ def nix_raw(
     gc_dont_gc: bool = True,
     exit_on_error: bool = True,
     verbose: bool = False,
+    use_system_nix: bool = False,
 ) -> bytes:
     my_env = os.environ.copy()
     if gc_dont_gc:
         my_env['GC_DONT_GC'] = '1'
-    cmd = ['nix'] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags
+    nix_bin = PINNED_NIX if not use_system_nix else SYSTEM_NIX
+    cmd = [nix_bin] + args + ['--extra-experimental-features', 'nix-command flakes'] + extra_flags
     if verbose:
         print('[kup]', ' '.join(cmd))
     if exit_on_error:
@@ -382,6 +386,7 @@ def nix(
     extra_public_keys: Optional[List[str]] = None,
     verbose: bool = False,
     refresh: bool = False,
+    use_system_nix: bool = False,
 ) -> bytes:
     global CONTAINS_DEFAULT_SUBSTITUTER
     if is_install and not CONTAINS_DEFAULT_SUBSTITUTER:
@@ -412,6 +417,7 @@ def nix(
         gc_dont_gc=True if 'darwin' in ARCH else False,
         exit_on_error=exit_on_error,
         verbose=verbose,
+        use_system_nix=use_system_nix,
     )
 
 
@@ -421,11 +427,12 @@ def nix_detach(
     extra_public_keys: Optional[List[str]] = None,
     verbose: bool = False,
     refresh: bool = False,
+    use_system_nix: bool = False,
 ) -> None:
     my_env = os.environ.copy()
     if 'darwin' in ARCH:
         my_env['GC_DONT_GC'] = '1'
-    nix = subprocess.check_output(['which', 'nix']).decode('utf8').strip()
+    nix_bin = PINNED_NIX if not use_system_nix else SYSTEM_NIX
 
     if USER_IS_TRUSTED:
         substituters = [K_FRAMEWORK_CACHE] + (extra_substituters if extra_substituters is not None else [])
@@ -444,7 +451,7 @@ def nix_detach(
     refresh_flag = ['--refresh'] if refresh else []
 
     cmd = (
-        [nix]
+        [nix_bin]
         + args
         + ['--accept-flake-config', '--extra-experimental-features', 'nix-command flakes']
         + extra_subs_and_keys
@@ -456,7 +463,7 @@ def nix_detach(
         print('[kup]', ' '.join(cmd))
 
     os.execve(
-        nix,
+        nix_bin,
         cmd,
         my_env,
     )
