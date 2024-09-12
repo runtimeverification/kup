@@ -974,7 +974,7 @@ def main() -> None:
         if args.command == 'list':
             list_package(package_name.base, args.inputs, args.status, args.version)
 
-        elif args.command == 'install' or args.command == 'update':
+        elif args.command in ['install', 'update']:
             install_package(package_name, args.version, args.override)
         elif args.command == 'uninstall':
             uninstall_package(package_name.base)
