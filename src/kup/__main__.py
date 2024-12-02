@@ -275,8 +275,8 @@ def reload_packages(load_versions: bool = True) -> None:
         if 'attrPath' in m and m['attrPath']:
             available_package = lookup_available_package(m['attrPath'])
             if available_package is not None:
-                repo_path, _ = available_package.repo_path_with_access()
-                if 'url' in m and m['url'].startswith(repo_path):
+                base_repo_path = available_package.base_repo_path
+                if 'url' in m and m['url'].startswith(base_repo_path):
                     packages[available_package.package_name.base] = ConcretePackage.parse(
                         m['url'], available_package, idx, load_versions
                     )

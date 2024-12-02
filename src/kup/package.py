@@ -115,6 +115,10 @@ class GithubPackage:
         path, _ = self.repo_path_with_access()
         return f'{path}#{self.package_name}'
 
+    @property
+    def base_repo_path(self) -> str:
+        return f'github:{self.org}/{self.repo}'
+
     def concrete(
         self, override_branch_tag_commit_or_path: Optional[str] = None, ext: Optional[Iterable[str]] = None
     ) -> Union['ConcretePackage', 'LocalPackage']:
