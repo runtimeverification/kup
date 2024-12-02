@@ -65,8 +65,9 @@ available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'evm-semantics', PackageName('kevm'), branch='release'),
     GithubPackage('runtimeverification', 'plutus-core-semantics', PackageName('kplutus')),
     GithubPackage('runtimeverification', 'mir-semantics', PackageName('kmir')),
-    GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol')),
+    GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol'), branch='release'),
     GithubPackage('runtimeverification', 'kasmer-multiversx', PackageName('kmxwasm')),
+    GithubPackage('runtimeverification', 'komet', PackageName('komet')),
 ]
 
 
@@ -890,6 +891,14 @@ def main() -> None:
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
 
+    update = subparser.add_parser(
+        'update',
+        help='update the stated package (alias of install)',
+        add_help=False,
+        parents=[verbose_arg, shared_args],
+    )
+    update.add_argument('-h', '--help', action=_HelpInstallAction)
+
     uninstall = subparser.add_parser(
         'uninstall', help="remove the given package from the user's PATH", parents=[verbose_arg]
     )
@@ -968,7 +977,7 @@ def main() -> None:
         if args.command == 'list':
             list_package(package_name.base, args.inputs, args.status, args.version)
 
-        elif args.command == 'install':
+        elif args.command in ['install', 'update']:
             install_package(package_name, args.version, args.override)
         elif args.command == 'uninstall':
             uninstall_package(package_name.base)
