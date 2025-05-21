@@ -516,7 +516,15 @@ def install_package(
         )
 
     verb = 'updated' if package_name.base in installed_packages else 'installed'
-    display_version = f' ({package_version})' if package_version else ' (master)'
+
+    if package_version is not None:
+        display_version = package_version
+    elif package.branch is not None:
+        display_version = package.branch
+    else:
+        display_version = None
+    display_version = f' ({display_version})' if display_version is not None else ''
+
     rich.print(
         f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/]."
     )

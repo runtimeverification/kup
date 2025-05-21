@@ -246,12 +246,13 @@ class ConcretePackage(GithubPackage):
         access_token: Optional[str] = None,
         substituters: Optional[list[str]] = None,
         public_keys: Optional[list[str]] = None,
+        update_branch: Optional[str] = None,
     ):
         self.commit = commit
         self.status = status
         self.index = index
         self.tag = tag
-        super().__init__(org, repo, package, None, ssh_git, access_token, substituters, public_keys)
+        super().__init__(org, repo, package, update_branch, ssh_git, access_token, substituters, public_keys)
 
     @property
     def concrete_repo_path_with_access(self) -> Tuple[str, List[str]]:
@@ -321,6 +322,7 @@ class ConcretePackage(GithubPackage):
             tag,
             idx,
             package.ssh_git,
+            update_branch=package.branch,
         )
 
 
