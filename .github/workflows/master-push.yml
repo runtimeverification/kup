@@ -12,10 +12,10 @@ jobs:
         include:
           - runner: ubuntu-latest
             os: ubuntu-latest
-          - runner: macos-12
-            os: macos-12
-          - runner: MacM1
-            os: self-macos-12
+          - runner: macos-15
+            os: macos-15
+          - runner: self-macos-latest
+            os: self-macos-latest
     runs-on: ${{ matrix.runner }}
     steps:
       - name: 'Check out code'
