@@ -17,7 +17,7 @@ jobs:
       - name: 'Check out code'
         uses: actions/checkout@v3
       - name: 'Install Nix/Cachix'
-        uses: cachix/install-nix-action@v22
+        uses: cachix/install-nix-action@v31.7.0
         with:
           install_url: https://releases.nixos.org/nix/nix-2.32.0/install
           extra_nix_config:
