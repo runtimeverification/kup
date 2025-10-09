@@ -5,7 +5,9 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import uuid
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
+from pathlib import Path
 from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
 
 import giturlparse
@@ -481,6 +483,15 @@ def install_package(
     _, git_token_options = package.concrete_repo_path_with_access
     overrides = mk_override_args(package, package_overrides)
 
+    _track_event(
+        'kup_install_start',
+        {
+            'package': package_name.base,
+            'version': package_version,
+            'has_overrides': len(package_overrides) > 0 if package_overrides else False,
+        },
+    )
+
     if not overrides and package.uri in pinned_package_cache:
         rich.print(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
         nix(
@@ -524,6 +535,16 @@ def install_package(
     else:
         display_version = None
     display_version = f' ({display_version})' if display_version is not None else ''
+
+    _track_event(
+        'kup_install_complete',
+        {
+            'package': package_name.base,
+            'version': package_version or 'latest',
+            'was_update': verb == 'updated',
+            'from_cache': package.uri in pinned_package_cache and not overrides,
+        },
+    )
 
     rich.print(
         f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/]."
@@ -1035,6 +1056,37 @@ def main() -> None:
                     extra_public_keys=package.public_keys,
                     verbose=VERBOSE,
                 )
+
+
+def _get_user_id() -> str:
+    """Get or create persistent anonymous user ID"""
+    config_dir = Path.home() / '.kprofile'
+    config_dir.mkdir(exist_ok=True)
+    user_id_file = config_dir / 'user_id'
+
+    if user_id_file.exists():
+        return user_id_file.read_text().strip()
+
+    user_id = str(uuid.uuid4())
+    user_id_file.write_text(user_id)
+    return user_id
+
+
+def _track_event(event: str, properties: dict | None = None) -> None:
+    """Send telemetry event to proxy server"""
+    if os.getenv('K_TELEMETRY') == '0':
+        return
+
+    try:
+        json = {'user_id': _get_user_id(), 'event': event, 'properties': properties or {}}
+        print(json)
+        # requests.post(
+        #     'http://localhost:5000/track',  # TODO: replace with the telemetry proxy server ip
+        #     json={'user_id': _get_user_id(), 'event': event, 'properties': properties or {}},
+        #     timeout=2,
+        # )
+    except Exception:
+        pass  # Fail silently
 
 
 if __name__ == '__main__':
