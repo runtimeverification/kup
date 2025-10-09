@@ -191,7 +191,7 @@ def package_metadata_tree(
         follows = (' - follows [green]' + '/'.join(p.follows)) if type(p) == Follows else ''
         status = ''
         if show_status and type(p) == PackageMetadata:
-            auth = {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
+            auth = {'Authorization': f"Bearer {os.getenv('GH_TOKEN')}"} if os.getenv('GH_TOKEN') else {}
             commits = requests.get(f'https://api.github.com/repos/{p.org}/{p.repo}/commits', headers=auth)
             if commits.ok:
                 commits_list = [c['sha'] for c in commits.json()]
@@ -253,8 +253,8 @@ def reload_packages(load_versions: bool = True) -> None:
     if pinned.ok:
         pinned_package_cache = {r['name']: r['lastRevision']['storePath'] for r in pinned.json()}
 
-    if os.path.exists(f'{os.getenv("HOME")}/.nix-profile/manifest.json'):
-        manifest_file = open(f'{os.getenv("HOME")}/.nix-profile/manifest.json')
+    if os.path.exists(f"{os.getenv('HOME')}/.nix-profile/manifest.json"):
+        manifest_file = open(f"{os.getenv('HOME')}/.nix-profile/manifest.json")
         manifest = json.loads(manifest_file.read())['elements']
         if type(manifest) is list:
             manifest = dict(enumerate(manifest))
@@ -333,7 +333,7 @@ def list_package(
             auth = (
                 {'Authorization': f'Bearer {listed_package.access_token}'}
                 if listed_package.access_token
-                else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
+                else {'Authorization': f"Bearer {os.getenv('GH_TOKEN')}"}
                 if os.getenv('GH_TOKEN')
                 else {}
             )
@@ -354,7 +354,7 @@ def list_package(
                     c['commit']['message'],
                     tagged_releases[c['sha']]['name'] if c['sha'] in tagged_releases else None,
                     c['commit']['committer']['date'],
-                    f'github:{listed_package.org}/{listed_package.repo}/{c["sha"]}#{listed_package.package_name}'
+                    f"github:{listed_package.org}/{listed_package.repo}/{c['sha']}#{listed_package.package_name}"
                     in pinned_package_cache.keys(),
                 )
                 for c in commits.json()
@@ -381,7 +381,7 @@ def list_package(
         table_data = [['Package name (alias)', 'Installed version', 'Status'],] + [
             [
                 str(PackageName(alias, p.package_name.ext).pretty_name),
-                f'{p.commit[:7] if TERMINAL_WIDTH < 80 else p.commit}{" (" + p.tag + ")" if p.tag else ""}'
+                f"{p.commit[:7] if TERMINAL_WIDTH < 80 else p.commit}{' (' + p.tag + ')' if p.tag else ''}"
                 if type(p) == ConcretePackage
                 else '\033[3mlocal checkout\033[0m'
                 if type(p) == LocalPackage
@@ -546,7 +546,7 @@ def uninstall_package(package_name: str) -> None:
         rich.print(
             "⚠️ [yellow]You are about to remove '[green]kup[/]' "
             'with other K framework packages still installed.\n'
-            '[/]Are you sure you want to continue? \[y/N]'  # noqa: W605
+            '[/]Are you sure you want to continue? [y/N]'  # noqa: W605
         )
 
         yes = {'yes', 'y', 'ye', ''}
@@ -594,7 +594,7 @@ def check_github_api_accessible(org: str, repo: str, access_token: Optional[str]
     auth = (
         {'Authorization': f'Bearer {access_token}'}
         if access_token
-        else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
+        else {'Authorization': f"Bearer {os.getenv('GH_TOKEN')}"}
         if os.getenv('GH_TOKEN')
         else {}
     )
