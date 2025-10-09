@@ -1079,12 +1079,11 @@ def _track_event(event: str, properties: dict | None = None) -> None:
 
     try:
         json = {'user_id': _get_user_id(), 'event': event, 'properties': properties or {}}
-        print(json)
-        # requests.post(
-        #     'http://localhost:5000/track',  # TODO: replace with the telemetry proxy server ip
-        #     json={'user_id': _get_user_id(), 'event': event, 'properties': properties or {}},
-        #     timeout=2,
-        # )
+        requests.post(
+            'http://localhost:5000/track',  # TODO: replace with the telemetry proxy server ip
+            json={'user_id': _get_user_id(), 'event': event, 'properties': properties or {}},
+            timeout=2,
+        )
     except Exception:
         pass  # Fail silently
 
