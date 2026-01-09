@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-import rich
+from output import print_human, print_machine
 
 K_FRAMEWORK_CACHE = 'https://k-framework.cachix.org'
 K_FRAMEWORK_PUBLIC_KEY = 'k-framework.cachix.org-1:jeyMXB2h28gpNRjuVkehg+zLj62ma1RnyyopA/20yFE='
@@ -60,13 +60,19 @@ def nix_raw(
             )
         except subprocess.CalledProcessError as exc:
             if exc.returncode == -9:
-                rich.print(
+                print_human(
                     '\n❗ [red]The operation could not be completed, as the installer was killed by the operating system. The process likely ran out of memory ...[/]'
                 )
+                print_machine(
+                    {'error': 'The operation was killed by the operating system, likely due to out-of-memory'}
+                )
             else:
-                print(exc)
-                rich.print(
+                print_human(exc)
+                print_human(
                     "\n❗ [red]The operation could not be completed.\n[/]   See the error output above (try re-running this command with '[green]--verbose[/]' for more detailed logs) ..."
+                )
+                print_machine(
+                    {'error': 'The operation could not be completed', 'nix_error': str(exc)}
                 )
             sys.exit(exc.returncode)
     else:
@@ -119,7 +125,8 @@ def check_substituters() -> Tuple[bool, bool]:
         cmd.append('--json')
         result = nix_raw(cmd, extra_flags=[])
     except Exception:
-        rich.print(f"⚠️ [yellow]Could not run 'nix {SHOW_CONFIG_COMMAND}'.")
+        print_human(f"⚠️ [yellow]Could not run 'nix {SHOW_CONFIG_COMMAND}'.")
+        print_machine({'warning': 'Could not run command', 'command': f'nix {SHOW_CONFIG_COMMAND}'})
         return False, False
     config = json.loads(result)
     try:
@@ -144,8 +151,9 @@ def check_substituters() -> Tuple[bool, bool]:
         )
         return current_user_is_trusted, has_all_substituters
     except Exception as e:
-        print(str(e))
-        rich.print('⚠️ [yellow]Could not fetch nix substituters or figure out if the current user is trusted by nix.')
+        print_human(str(e))
+        print_human('⚠️ [yellow]Could not fetch nix substituters or figure out if the current user is trusted by nix.')
+        print_machine({'warning': 'Could not fetch nix substituters or figure out if the current user is trusted by nix', 'details': str(e)})
         return False, False
 
 
@@ -199,12 +207,17 @@ def install_substituters_nixos(name: str, substituters: List[str], pub_keys: Lis
     subprocess.call(['sudo', 'mv', '-f', f'/tmp/{name}.nix', f'{nixos_path}/kup'])
     subprocess.call(['sudo', 'mv', '-f', '/tmp/kup.nix', nixos_path])
 
-    rich.print(
+    print_human(
         f'The [blue]kup[/] cache configuration was successfully written to [green]{nixos_path}/kup/{name}.nix[/].\n\n'
         'To start using this cache make sure you have the following line in your [green]/etc/nixos/configuration.nix[/]:\n\n'
         '   [green]imports = [ ./kup.nix ];[/]\n\n'
         'Then run:\n\n'
         '   [green]sudo nixos-rebuild switch'
+    )
+    print_machine(
+        {'success': 'kup cache configuration written',
+         'path': f'{nixos_path}/kup/{name}.nix',
+        }
     )
 
 
@@ -287,21 +300,23 @@ def install_substituters_non_nixos(conf_file: str, substituters: List[str], pub_
     subprocess.call(['sudo', 'mv', '-f', '/tmp/nix.conf', os.path.dirname(conf_file)])
     subprocess.call(['sudo', 'pkill', 'nix-daemon'])
 
-    rich.print(f'The [blue]kup[/] cache configuration was successfully written to [green]{conf_file}[/].')
+    print_human(f'The [blue]kup[/] cache configuration was successfully written to [green]{conf_file}[/].')
+    print_machine({'success': 'kup cache configuration written', 'path': conf_file})
 
 
 def print_substituters_warning() -> None:
     new_trusted_users = TRUSTED_USERS if USER_IS_TRUSTED else TRUSTED_USERS + [USER]
     add_user_to_trusted = ' '.join(new_trusted_users)
     add_user_to_trusted_nix = ' '.join([f'"{s}"' for s in new_trusted_users])
-    rich.print(
+    print_human(
         f'\n⚠️ [yellow] The k-framework binary caches [green]{K_FRAMEWORK_CACHE}[/] and [green]{K_FRAMEWORK_BINARY_CACHE}[/] are\n'
         'not configured in your nix installation and the current user does not have sufficient permissions to add and use them.\n'
         '[blue]kup[/] relies on these caches to provide faster installation using pre-built binaries.[/]\n\n'
         'You can still install kup packages from source, however, to avoid building the packages on your local machine, consider:\n'
     )
+    print_machine({'warning': 'The k-framework binary caches are not configured and the current user does not have sufficient permissions'})
     if NIXOS_VERSION is None:
-        rich.print(
+        print_human(
             f'1) letting [blue]kup[/] modify the nix cache configuration. You will be prompted for root access. ([green]recommended[/])\n\n'
             '2) running the following command, to add the current user as trusted:\n\n'
             f'   [green]echo "trusted-users = {add_user_to_trusted}" | sudo tee -a /etc/nix/nix.conf && sudo pkill nix-daemon[/]\n\n'
@@ -311,14 +326,14 @@ def print_substituters_warning() -> None:
         )
     else:
         nix_setting = 'nix.settings.trusted-users' if NIXOS_VERSION.startswith('22') else 'nix.trustedUsers'
-        rich.print(
+        print_human(
             '1) letting [blue]kup[/] modify the nix cache configuration. You will be prompted for root access. ([green]recommended[/])\n\n'
             '2) adding/modifying the following setting in your [green]/etc/nixos/configuration.nix[/] to add the current user as trusted:\n\n'
             f'   [green]{nix_setting} = [ {add_user_to_trusted_nix} ];[/]\n\n'
             '   then rebuilding your configuration via [green]sudo nixos-rebuild switch[/] and re-running this command.'
         )
 
-    rich.print('Please select option [1] or [2], or press any key to continue without any changes: ')
+    print_human('Please select option [1] or [2], or press any key to continue without any changes: ')
 
 
 def install_substituters(name: str, substituters: List[str], pub_keys: List[str]) -> None:
@@ -350,16 +365,18 @@ def set_netrc_file(netrc_file: str) -> None:
     conf_file = '/etc/nix/nix.conf'
 
     if NIXOS_VERSION is not None:
-        rich.print(
+        print_human(
             '❗ [red]Cannot set the netrc file path on NixOS. Please make sure the current user can write to the default netrc file.[/]\n'
         )
+        print_machine({'error': 'Cannot set netrc file path on NixOS'})
         sys.exit(0)
     else:
         conf = read_config(conf_file)
         new_conf = conf + [KeyVal('netrc-file', netrc_file)]
         write_config('/tmp/nix.conf', new_conf)
 
-        rich.print(f'Adding a new netrc file ({netrc_file}) to nix config. This operation requires root access.')
+        print_human(f'Adding a new netrc file ({netrc_file}) to nix config. This operation requires root access.')
+        print_machine({'info': 'Adding a new netrc file to nix config.', 'netrc_file': netrc_file})
 
         if os.path.exists(conf_file):
             subprocess.call(['sudo', 'cp', '-f', conf_file, f'{conf_file}.bak'])

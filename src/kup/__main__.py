@@ -11,6 +11,7 @@ from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
 import giturlparse
 import requests
 import rich
+from output import print_human, print_machine, set_json_output, is_json_output
 from rich.align import Align
 from rich.columns import Columns
 from rich.console import Console
@@ -168,14 +169,16 @@ def get_package_metadata(package: Union[ConcretePackage, GithubPackage]) -> Pack
             ['flake', 'metadata', path, '--json'] + git_token_options, is_install=False, refresh=True, verbose=VERBOSE
         )
     except Exception:
-        rich.print('❗ [red]Could not get package metadata!')
+        print_human('❗ [red]Could not get package metadata!')
+        print_machine({'error': 'Could not get package metadata'})
         sys.exit(1)
     meta = json.loads(result)
     root_id = meta['locks']['root']
 
     res = parse_package_metadata(meta['locks']['nodes'], root_id, True, package.repo)
     if not res:
-        rich.print('❗ [red]Could not parse package metadata!')
+        print_human('❗ [red]Could not parse package metadata!')
+        print_machine({'error': 'Could not parse package metadata'})
         sys.exit(1)
     else:
         return res
@@ -214,6 +217,29 @@ def package_metadata_tree(
         for k in p.inputs.keys():
             tree.add(package_metadata_tree(p.inputs[k], k, show_status))
     return tree
+
+
+# build a json-serializable dict of inputs for the given package metadata
+def package_metadata_dict(
+    p: Union[PackageMetadata, Follows],
+    show_status: bool = False,
+) -> Dict[str, Any]:
+    if type(p) == PackageMetadata:
+        res: Dict[str, Any] = {'repo': p.repo, 'rev': p.rev, 'org': p.org, 'inputs': {}}
+        if show_status:
+            auth = {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
+            commits = requests.get(f'https://api.github.com/repos/{p.org}/{p.repo}/commits', headers=auth)
+            if commits.ok:
+                commits_list = [c['sha'] for c in commits.json()]
+                if p.rev in commits_list:
+                    res['commits_behind_master'] = commits_list.index(p.rev)
+        for k in p.inputs.keys():
+            res['inputs'][k] = package_metadata_dict(p.inputs[k], show_status)
+        return res
+    elif type(p) == Follows:
+        return {'follows': p.follows}
+    else:
+        return {}
 
 
 def lookup_available_package(raw_name: str) -> Optional[GithubPackage]:
@@ -319,17 +345,19 @@ def list_package(
     reload_packages()
     if package_name != 'all':
         if package_name not in packages.keys():
-            rich.print(
+            print_human(
                 f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
-                "[/]Use '[blue]kup list[/]' to see all the available packages."
+                "[/]Use '[blue]kup list[/]' to see all the available packages.",
             )
+            print_machine({'error': 'The package does not exist', 'package': package_name})
             return
 
         listed_package = packages[package_name].concrete(version, []) if version else packages[package_name]
 
         if show_inputs or show_status:
             inputs = get_package_metadata(listed_package)
-            rich.print(package_metadata_tree(inputs, show_status=show_status))
+            print_human(package_metadata_tree(inputs, show_status=show_status))
+            print_machine(package_metadata_dict(inputs, show_status=show_status))
         else:
             auth = (
                 {'Authorization': f'Bearer {listed_package.access_token}'}
@@ -342,7 +370,10 @@ def list_package(
                 f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/tags', headers=auth
             )
             if not tags.ok:
-                rich.print('❗ Listing versions is unsupported for private packages accessed over SSH.')
+                print_human(
+                    '❗ Listing versions is unsupported for private packages accessed over SSH.',
+                )
+                print_machine({'error': 'Listing versions is unsupported for private packages accessed over SSH.'})
                 return
             branch = f'?sha={listed_package.branch}' if listed_package.branch else ''
             commits = requests.get(
@@ -428,17 +459,19 @@ def mk_override_args(package: GithubPackage, overrides: List[List[str]]) -> List
         possible_input = walk_package_metadata(inputs, input_path)
         if possible_input is not None and type(possible_input) == Follows:
             follows_path = '/'.join(possible_input.follows)
-            rich.print(
+            print_human(
                 f"⚠️ [yellow]The input '[green]{input}[/]' you are trying to override follows '[green]{follows_path}[/]'.\n"
                 f"[/]You may want to call this command with '[blue]--override {follows_path}[/]' instead."
             )
+            print_machine({'warning': 'Input follows another input', 'input': input, 'follows': follows_path})
             input_path = possible_input.follows
             possible_input = walk_package_metadata(inputs, input_path)
         if possible_input is None and not version_or_path.startswith('github:'):
-            rich.print(
+            print_human(
                 f"❗ [red]'[green]{input}[/]' is not a valid input of the package '[green]{package.package_name.base}[/]'.\n"
                 f"[/]To see the valid inputs, run '[blue]kup list {package.package_name.base} --inputs[/]'"
             )
+            print_machine({'error': 'Input is not valid', 'input': input, 'package': package.package_name.base})
             sys.exit(1)
 
         if type(possible_input) == PackageMetadata:
@@ -458,9 +491,10 @@ def mk_override_args(package: GithubPackage, overrides: List[List[str]]) -> List
             nix_overrides.append('--update-input')
             nix_overrides.append(input)
         else:
-            rich.print(
-                f"❗ [red]Internal error when accessing package metadata. Expected '[green]{input}[/]' to be a direct input.[/]"
+            print_human(
+                f"❗ [red]Internal error when accessing package metadata. Expected '[green]{input}[/]' to be a direct input.[/]",
             )
+            print_machine({'error': 'Internal error when accessing package metadata', 'input': input})
             sys.exit(1)
     return nix_overrides
 
@@ -472,10 +506,11 @@ def install_package(
 ) -> None:
     reload_packages()
     if package_name.base not in packages:
-        rich.print(
+        print_human(
             f"❗ [red]The package '[green]{package_name.base}[/]' does not exist.\n"
-            "[/]Use '[blue]kup list[/]' to see all the available packages."
+            "[/]Use '[blue]kup list[/]' to see all the available packages.",
         )
+        print_machine({'error': 'The package does not exist', 'package': package_name.base})
         return
 
     package = packages[package_name.base].concrete(package_version, package_name.ext)
@@ -483,7 +518,8 @@ def install_package(
     overrides = mk_override_args(package, package_overrides)
 
     if not overrides and package.uri in pinned_package_cache:
-        rich.print(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
+        print_human(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
+        print_machine({'info': f"Fetching cached version of '{package_name.pretty_name}'"})
         nix(
             ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
             verbose=VERBOSE,
@@ -496,7 +532,8 @@ def install_package(
             verbose=VERBOSE,
         )
     else:
-        rich.print(f" ⌛ Building '[green]{package_name.pretty_name}[/]' ...")
+        print_human(f" ⌛ Building '[green]{package_name.pretty_name}[/]' ...")
+        print_machine({'info': f"Building '{package_name.pretty_name}'"})
         # we first attempt to build the package before deleting the old one form the profile, to avoid
         # a situation where we delete the old package and then fail to build the new one. This is
         # especially awkward when updating kup
@@ -526,25 +563,37 @@ def install_package(
         display_version = None
     display_version = f' ({display_version})' if display_version is not None else ''
 
-    rich.print(
-        f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/]."
+    print_human(
+        f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/].",
     )
+    print_machine({verb: package_name.base, 'package_uri': package.uri, 'package_version': display_version})
 
 
 def uninstall_package(package_name: str) -> None:
     reload_packages(load_versions=False)
     if package_name not in packages.keys():
-        rich.print(
+        print_human(
             f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
-            "[/]Use '[blue]kup list[/]' to see all the available packages."
+            "[/]Use '[blue]kup list[/]' to see all the available packages.",
         )
+        print_machine({'error': 'The package does not exist', 'package': package_name})
         return
     if package_name not in installed_packages:
-        rich.print(f"❗ The package '[green]{package_name}[/]' is not currently installed.")
+        print_human(
+            f"❗ The package '[green]{package_name}[/]' is not currently installed.",
+        )
+        print_machine({'error': 'The package is not currently installed', 'package': package_name})
         return
 
     if package_name == 'kup' and len(installed_packages) > 1:
-        rich.print(
+        if is_json_output():
+            print_machine(
+                {
+                    'error': "Attempting to uninstall 'kup' with other K framework packages still installed",
+                }
+            )
+            return
+        print_human(
             "⚠️ [yellow]You are about to remove '[green]kup[/]' "
             'with other K framework packages still installed.\n'
             '[/]Are you sure you want to continue? \[y/N]'  # noqa: W605
@@ -638,7 +687,8 @@ def add_new_package(
                     verbose=VERBOSE,
                 )
             else:
-                rich.print('Detected a private repository without a GitHub access token, using git+ssh...')
+                print_human('Detected a private repository without a GitHub access token, using git+ssh...')
+                print_machine({'info': 'Detected a private repository without a GitHub access token, using git+ssh...'})
                 new_package = GithubPackage(org, repo, package_name, branch, ssh_git=True)
                 path, git_token_options = new_package.repo_path_with_access()
                 nix(
@@ -649,15 +699,16 @@ def add_new_package(
                     verbose=VERBOSE,
                 )
         except Exception:
-            rich.print(
+            print_human(
                 '❗ [red]Could not find the specified package.[/]\n\n'
                 '   Make sure that you entered the repository correctly and ensure you have set up the right SSH keys if your repository is private.\n\n'
                 '   Alternatively, try using the [blue]--github-access-token[/] option to specify a GitHub personal access token.\n'
                 '   For more information on GitHub personal access tokens, see:\n\n'
                 '     https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token'
             )
-            if not branch:
-                rich.print(
+            print_machine({'error': 'Could not find the specified package', 'package': package_name.base})
+            if not branch and not is_json_output():
+                print_human(
                     '   If your repository has a [blue]main[/] branch instead of [blue]master[/], try\n\n'
                     f'     [green] kup add {uri}/main {package_name.pretty_name}\n'
                 )
@@ -683,7 +734,8 @@ def add_new_package(
             config[package_name.base]['branch'] = new_package.branch
 
         if new_package.access_token:
-            rich.print(f'✅ The GitHub access token will be saved to {user_packages_config_path}.')
+            print_human(f'✅ The GitHub access token will be saved to {user_packages_config_path}.')
+            print_machine({'info': 'The GitHub access is saved.', 'path': user_packages_config_path})
             config[package_name.base]['github-access-token'] = new_package.access_token
 
         substituters_to_add = []
@@ -697,18 +749,22 @@ def add_new_package(
 
             if not reachable:
                 if s in cache_access_tokens:
-                    rich.print(f"❗ [red]Could not access '[blue]{s}[/]' cache.[/]\n")
+                    print_human(f"❗ [red]Could not access '[blue]{s}[/]' cache.[/]\n")
+                    print_machine({'error': 'Could not access cache.', 'cache': s})
                     return
                 # case when the cache is private but an access token has not been provided as an argument
                 else:
-                    rich.print(
+                    if is_json_output():
+                        print_machine({'error': 'Could not access cache. Access token required.', 'cache': s})
+                        return
+                    print_human(
                         f'ℹ️  The {s} binary cache appears to be private.\n'
                         'Please provide an auth token for this cache and press [enter]'
                     )
                     access_token = input()
                     reachable, access_token = ping_nix_store(s, access_token)
                     if not reachable:
-                        rich.print(f"❗ [red]Could not access '[blue]{s}[/]' cache.[/]\n")
+                        print_human(f"❗ [red]Could not access '[blue]{s}[/]' cache.[/]\n")
                         return
             if access_token:
                 netrc_file = CURRENT_NETRC_FILE
@@ -722,8 +778,8 @@ def add_new_package(
                 s_stripped = s.replace('https://', '').replace('http://', '').replace('/', '').strip()
                 netrc[s_stripped]['password'] = access_token
                 netrc.save()
-                rich.print(f'✅ The access token for {s} was saved to {netrc_file}.')
-
+                print_human(f'✅ The access token for {s} was saved to {netrc_file}.')
+                print_machine({'info': 'Cache access token for was saved.', 'cache': s, 'path': netrc_file})
             substituters_to_add.append(s)
             trusted_public_keys_to_add.append(pub_key)
 
@@ -740,12 +796,20 @@ def add_new_package(
         with open(user_packages_config_path, 'w') as configfile:
             config.write(configfile)
 
-        rich.print(
+        print_human(
             f"✅ Successfully added new package '[green]{package_name.pretty_name}[/]'. Configuration written to {user_packages_config_path}."
+        )
+        print_machine(
+            {
+                'info': 'Successfully added new package',
+                'package': package_name.pretty_name,
+                'configuration_path': user_packages_config_path,
+            }
         )
 
     else:
-        rich.print(f"❗ The URI '[red]{uri}[/]' is invalid.\n" "   The correct format is '[green]org/repo[/]'.")
+        print_human(f"❗ The URI '[red]{uri}[/]' is invalid.\n" "   The correct format is '[green]org/repo[/]'.")
+        print_machine({'error': 'Invalid URI', 'uri': uri})
 
 
 def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: Optional[int] = None) -> None:
@@ -754,7 +818,8 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
         uri_or_path = split[0]
         package_name = split[1]
     else:
-        rich.print('❗ [red]Invalid URI!')
+        print_human('❗ [red]Invalid URI!')
+        print_machine({'error': 'Invalid URI', 'uri': uri_or_path_with_package_name})
         sys.exit(1)
     if os.path.isdir(uri_or_path):
         uri = uri_or_path
@@ -768,50 +833,58 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
             repo = git_url.name
             result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False, refresh=True, verbose=VERBOSE)
         except Exception:
-            rich.print('❗ [red]Could not get package metadata!')
+            print_human('❗ [red]Could not get package metadata!')
+            print_machine({'error': 'Could not get package metadata', 'uri': uri_or_path})
             sys.exit(1)
         meta = json.loads(result)
         if 'rev' in meta['locked']:
             rev = meta['locked']['rev']
         else:
-            rich.print('❗ [red]Repository is dirty, aborting!')
+            print_human('❗ [red]Repository is dirty, aborting!')
+            print_machine({'error': 'Repository is dirty', 'uri': uri_or_path})
             sys.exit(1)
     elif uri_or_path.startswith('github:'):
         try:
             result = nix(['flake', 'metadata', uri_or_path, '--json'], is_install=False, refresh=True, verbose=VERBOSE)
         except Exception:
-            rich.print('❗ [red]Could not get package metadata!')
+            print_human('❗ [red]Could not get package metadata!')
+            print_machine({'error': 'Could not get package metadata', 'uri': uri_or_path})
             sys.exit(1)
         meta = json.loads(result)
         print(meta['locked'])
         if 'rev' in meta['locked']:
             rev = meta['locked']['rev']
         else:
-            rich.print('❗ [red]Repository is dirty, aborting!')
+            print_human('❗ [red]Repository is dirty, aborting!')
+            print_machine({'error': 'Repository is dirty', 'uri': uri_or_path})
             sys.exit(1)
         owner = meta['locked']['owner']
         repo = meta['locked']['repo']
         uri = f'github:{owner}/{repo}/{rev}'
     else:
-        rich.print('❗ [red]Unsupported URI!')
+        print_human('❗ [red]Unsupported URI!')
+        print_machine({'error': 'Unsupported URI', 'uri': uri_or_path})
         sys.exit(1)
     cache_key = f'github:{owner}/{repo}/{rev}#{PackageName(package_name)}'
     try:
         result = nix(['build', f'{uri}#{PackageName(package_name)}', '--no-link', '--json'], verbose=VERBOSE)
         build_meta = json.loads(result)
     except Exception:
-        rich.print('❗ [red]Could not build package!')
+        print_human('❗ [red]Could not build package!')
+        print_machine({'error': 'Could not build package', 'uri': uri})
         sys.exit(1)
     if len(build_meta) == 1 and 'outputs' in build_meta[0] and 'out' in build_meta[0]['outputs']:
         nix_store_path = build_meta[0]['outputs']['out']
     else:
-        rich.print('❗ [red]Could not find out path for package!')
+        print_human('❗ [red]Could not find out path for package!')
+        print_machine({'error': 'Could not find out path for package', 'uri': uri})
         sys.exit(1)
 
     try:
         subprocess.run(['cachix', 'push', cache, nix_store_path], check=True)
     except Exception:
-        rich.print('❗ [red]Could not push binaries to cachix!')
+        print_human('❗ [red]Could not push binaries to cachix!')
+        print_machine({'error': 'Could not push binaries to cachix', 'cache': cache, 'nix_store_path': nix_store_path})
         sys.exit(1)
     try:
         pin_args = ['cachix', 'pin', cache, cache_key, nix_store_path] + (
@@ -819,7 +892,10 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
         )
         subprocess.run(pin_args, check=True)
     except Exception:
-        rich.print('❗ [red]Could not pin package! Make sure you have cachix >=1.6')
+        print_human('❗ [red]Could not pin package! Make sure you have cachix >=1.6')
+        print_machine(
+            {'error': 'Could not pin package', 'cache': cache, 'cache_key': cache_key, 'nix_store_path': nix_store_path}
+        )
         sys.exit(1)
 
 
@@ -829,7 +905,6 @@ def print_help(subcommand: str, parser: ArgumentParser) -> None:
     with open(os.path.join(KUP_DIR, f'{subcommand}-help.md'), 'r') as help_file:
         console.print(Markdown(help_file.read(), code_theme='emacs'))
     parser.exit()
-
 
 class _HelpListAction(_HelpAction):
     def __call__(
@@ -875,6 +950,8 @@ def main() -> None:
     )
     verbose_arg = ArgumentParser(add_help=False)
     verbose_arg.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
+    json_arg = ArgumentParser(add_help=False)
+    json_arg.add_argument('--json', action='store_true', help='output the result in JSON format where applicable')
     shared_args = ArgumentParser(add_help=False)
     shared_args.add_argument('package', type=str)
     shared_args.add_argument('--version', type=str, help='install the given version of the package')
@@ -883,7 +960,7 @@ def main() -> None:
     )
     subparser = parser.add_subparsers(dest='command')
     list = subparser.add_parser(
-        'list', help='show the active and installed K semantics', add_help=False, parents=[verbose_arg]
+        'list', help='show the active and installed K semantics', add_help=False, parents=[verbose_arg, json_arg]
     )
     list.add_argument('package', nargs='?', default='all', type=str)
     list.add_argument('--version', type=str, help='print information about the given version of the package')
@@ -896,7 +973,10 @@ def main() -> None:
     list.add_argument('-h', '--help', action=_HelpListAction)
 
     install = subparser.add_parser(
-        'install', help='download and install the stated package', add_help=False, parents=[verbose_arg, shared_args]
+        'install',
+        help='download and install the stated package',
+        add_help=False,
+        parents=[verbose_arg, json_arg, shared_args],
     )
     install.add_argument('-h', '--help', action=_HelpInstallAction)
 
@@ -904,12 +984,12 @@ def main() -> None:
         'update',
         help='update the stated package (alias of install)',
         add_help=False,
-        parents=[verbose_arg, shared_args],
+        parents=[verbose_arg, json_arg, shared_args],
     )
     update.add_argument('-h', '--help', action=_HelpInstallAction)
 
     uninstall = subparser.add_parser(
-        'uninstall', help="remove the given package from the user's PATH", parents=[verbose_arg]
+        'uninstall', help="remove the given package from the user's PATH", parents=[verbose_arg, json_arg]
     )
     uninstall.add_argument('package', type=str)
 
@@ -917,13 +997,15 @@ def main() -> None:
         'shell',
         help='add the selected package to the current shell (temporary)',
         add_help=False,
-        parents=[verbose_arg, shared_args],
+        parents=[verbose_arg, json_arg, shared_args],
     )
     shell.add_argument('-h', '--help', action=_HelpShellAction)
 
-    subparser.add_parser('doctor', help='check if kup is installed correctly', parents=[verbose_arg])
+    subparser.add_parser('doctor', help='check if kup is installed correctly', parents=[verbose_arg, json_arg])
 
-    add = subparser.add_parser('add', help='add a private package to kup', add_help=False, parents=[verbose_arg])
+    add = subparser.add_parser(
+        'add', help='add a private package to kup', add_help=False, parents=[verbose_arg, json_arg]
+    )
     add.add_argument('uri', type=str)
     add.add_argument('package', type=str)
     add.add_argument(
@@ -939,7 +1021,7 @@ def main() -> None:
     add.add_argument('--strict', action='store_true', help='check if the package being added exists')
     add.add_argument('-h', '--help', action=_HelpAddAction)
 
-    publish = subparser.add_parser('publish', help='push a package to a cachix cache', parents=[verbose_arg])
+    publish = subparser.add_parser('publish', help='push a package to a cachix cache', parents=[verbose_arg, json_arg])
     publish.add_argument('cache', type=str)
     publish.add_argument('uri', type=str)
     publish.add_argument('--keep-days', type=int, help='keep package cached for N days')
@@ -948,12 +1030,14 @@ def main() -> None:
         'gc',
         help='Call Nix garbage collector to remove previously uninstalled packages',
         add_help=False,
-        parents=[verbose_arg],
+        parents=[verbose_arg, json_arg],
     )
 
     args = parser.parse_args()
     if 'verbose' in args and args.verbose:
         VERBOSE = True
+    if 'json' in args and args.json:
+        set_json_output(True)
 
     if args.command is None:
         parser.print_help()
@@ -963,11 +1047,17 @@ def main() -> None:
     elif args.command == 'doctor':
         trusted_check = '🟢' if USER_IS_TRUSTED else '🟠'
         substituter_check = '🟢' if CONTAINS_DEFAULT_SUBSTITUTER else ('🟢' if USER_IS_TRUSTED else '🔴')
-        rich.print(
+        print_human(
             f'\nUser is trusted                      {trusted_check}\n'
             f'K-framework substituter is set up    {substituter_check}\n'
         )
+        print_machine(
+            {'user_is_trusted': USER_IS_TRUSTED, 'k_framework_substituter_set_up': CONTAINS_DEFAULT_SUBSTITUTER}
+        )
         if not USER_IS_TRUSTED and not CONTAINS_DEFAULT_SUBSTITUTER:
+            if is_json_output():
+                print_machine({'error': 'User is not trusted and K-framework substituter is not set up'})
+                return
             print()
             ask_install_substituters('k-framework', [K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUBLIC_KEY])
     elif args.command == 'publish':
@@ -999,15 +1089,19 @@ def main() -> None:
                 args.strict,
             )
         elif args.command == 'shell':
+            if is_json_output():
+                print_machine({'error': 'kup shell does not support JSON output'})
+                return
+
             reload_packages(load_versions=False)
             if package_name.base not in packages.keys():
-                rich.print(
+                print_human(
                     f"❗ [red]The package '[green]{package_name.pretty_name}[/]' does not exist.\n"
                     "[/]Use '[blue]kup list[/]' to see all the available packages."
                 )
                 return
             if package_name.base in installed_packages:
-                rich.print(
+                print_human(
                     f"❗ [red]The package '[green]{package_name.pretty_name}[/]' is currently installed and thus cannot be temporarily added to the PATH.\n"
                     f"[/]Use:\n * '[blue]kup install {package_name.pretty_name} --version ...[/]' to replace the installed version or\n * '[blue]kup uninstall {package_name.base}[/]' to remove the installed version and then re-run this command"
                 )
@@ -1017,7 +1111,7 @@ def main() -> None:
             _, git_token_options = package.concrete_repo_path_with_access
 
             if not args.override and package.uri in pinned_package_cache:
-                rich.print(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
+                print_human(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
                 nix(
                     ['copy', '--from', K_FRAMEWORK_BINARY_CACHE, pinned_package_cache[package.uri]],
                     verbose=VERBOSE,
@@ -1028,7 +1122,7 @@ def main() -> None:
                     verbose=VERBOSE,
                 )
             else:
-                rich.print(f" ⌛ Building '[green]{package_name.pretty_name}[/]' ...")
+                print_human(f" ⌛ Building '[green]{package_name.pretty_name}[/]' ...")
                 overrides = mk_override_args(package, args.override)
                 nix_detach(
                     ['shell', package.uri] + overrides + git_token_options,
