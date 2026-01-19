@@ -50,7 +50,7 @@ from .package import (
     PackageName,
     PackageVersion,
 )
-from .telemetry import _emit_event
+from .telemetry import emit_event
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
@@ -483,7 +483,7 @@ def install_package(
     _, git_token_options = package.concrete_repo_path_with_access
     overrides = mk_override_args(package, package_overrides)
 
-    _emit_event(
+    emit_event(
         'kup_install_start',
         {
             'package': package_name.base,
@@ -536,7 +536,7 @@ def install_package(
         display_version = None
     display_version = f' ({display_version})' if display_version is not None else ''
 
-    _emit_event(
+    emit_event(
         'kup_install_complete',
         {
             'package': package_name.base,

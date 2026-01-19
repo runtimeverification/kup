@@ -45,7 +45,7 @@ def _has_permission() -> bool:
     return config.get('user', {}).get('consent', True)
 
 
-def _emit_event(event: str, properties: dict | None = None) -> None:
+def emit_event(event: str, properties: dict | None = None) -> None:
     """Send telemetry event to proxy server"""
     if not _has_permission():
         return
@@ -58,5 +58,5 @@ def _emit_event(event: str, properties: dict | None = None) -> None:
             json={'user_id': _get_user_id(), 'event': event, 'properties': properties},
             timeout=2,
         )
-    except Exception:
-        pass  # Fail silently
+    except Exception as e:
+        _LOGGER.warning(f'Telemetry event failed: {event}', exc_info=e)
