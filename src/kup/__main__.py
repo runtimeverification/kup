@@ -567,7 +567,7 @@ def uninstall_package(package_name: str) -> None:
         rich.print(
             "⚠️ [yellow]You are about to remove '[green]kup[/]' "
             'with other K framework packages still installed.\n'
-            '[/]Are you sure you want to continue? [y/N]'  # noqa: W605
+            '[/]Are you sure you want to continue? \[y/N]'  # noqa: W605
         )
 
         yes = {'yes', 'y', 'ye', ''}
