@@ -112,6 +112,7 @@ packages: dict[str, GithubPackage] = {}
 installed_packages: list[str] = []
 pinned_package_cache: dict[str, str] = {}
 
+
 # This walk function walks the metadata returned by nix, where inputs can either point to a final node in
 # the root of the tree or an indirection/pointer path through the tree
 def walk_path_nix_meta(nodes: dict, current_node_id: str, path: list[str]) -> str:
@@ -190,9 +191,7 @@ def get_package_metadata(package: ConcretePackage | GithubPackage) -> PackageMet
 
 
 # build a rich.Tree of inputs for the given package metadata
-def package_metadata_tree(
-    p: PackageMetadata | Follows, lbl: str | None = None, show_status: bool = False
-) -> Tree:
+def package_metadata_tree(p: PackageMetadata | Follows, lbl: str | None = None, show_status: bool = False) -> Tree:
     if lbl is None:
         tree = Tree('Inputs:')
     else:
@@ -342,9 +341,7 @@ def list_package(
             auth = (
                 {'Authorization': f'Bearer {listed_package.access_token}'}
                 if listed_package.access_token
-                else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
-                if os.getenv('GH_TOKEN')
-                else {}
+                else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
             )
             tags = requests.get(
                 f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/tags', headers=auth
@@ -387,14 +384,16 @@ def list_package(
             table = SingleTable(table_data)
             print(table.table)
     else:
-        table_data = [['Package name (alias)', 'Installed version', 'Status'],] + [
+        table_data = [
+            ['Package name (alias)', 'Installed version', 'Status'],
+        ] + [
             [
                 str(PackageName(alias, p.package_name.ext).pretty_name),
-                f'{p.commit[:7] if TERMINAL_WIDTH < 80 else p.commit}{" (" + p.tag + ")" if p.tag else ""}'
-                if type(p) == ConcretePackage
-                else '\033[3mlocal checkout\033[0m'
-                if type(p) == LocalPackage
-                else '',
+                (
+                    f'{p.commit[:7] if TERMINAL_WIDTH < 80 else p.commit}{" (" + p.tag + ")" if p.tag else ""}'
+                    if type(p) == ConcretePackage
+                    else '\033[3mlocal checkout\033[0m' if type(p) == LocalPackage else ''
+                ),
                 p.status if type(p) == ConcretePackage else INSTALLED if type(p) == LocalPackage else AVAILABLE,
             ]
             for alias, p in packages.items()
@@ -413,9 +412,7 @@ def is_sha1(maybe_sha: str) -> bool:
     return True
 
 
-def walk_package_metadata(
-    node: PackageMetadata | Follows, path: list[str]
-) -> PackageMetadata | Follows | None:
+def walk_package_metadata(node: PackageMetadata | Follows, path: list[str]) -> PackageMetadata | Follows | None:
     if len(path) == 0:
         return node
     else:
@@ -603,9 +600,7 @@ def check_github_api_accessible(org: str, repo: str, access_token: str | None) -
     auth = (
         {'Authorization': f'Bearer {access_token}'}
         if access_token
-        else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
-        if os.getenv('GH_TOKEN')
-        else {}
+        else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
     )
     commits = requests.get(f'https://api.github.com/repos/{org}/{repo}/commits', headers=auth)
     return commits.ok
@@ -697,7 +692,7 @@ def add_new_package(
         substituters_to_add = []
         trusted_public_keys_to_add = []
 
-        for (s, pub_key) in zip(substituters, trusted_public_keys, strict=True):
+        for s, pub_key in zip(substituters, trusted_public_keys, strict=True):
             if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS:
                 pass
 
@@ -873,13 +868,11 @@ def main() -> None:
         description='The K Framework installer',
         prog='kup',
         formatter_class=RawDescriptionHelpFormatter,
-        epilog=textwrap.dedent(
-            """\
+        epilog=textwrap.dedent("""\
          additional information:
              For more detailed help for the different sub-commands, call
                kup {list,install,add,shell} --help
-         """
-        ),
+         """),
     )
     verbose_arg = ArgumentParser(add_help=False)
     verbose_arg.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')

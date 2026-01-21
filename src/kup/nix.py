@@ -258,9 +258,7 @@ def contains_key(config: list[Comment | Blank | KeyVal], key: str) -> bool:
     return False
 
 
-def append_to_config(
-    config: list[Comment | Blank | KeyVal], my_dict: dict[str, str]
-) -> list[Comment | Blank | KeyVal]:
+def append_to_config(config: list[Comment | Blank | KeyVal], my_dict: dict[str, str]) -> list[Comment | Blank | KeyVal]:
     for n, item in enumerate(config):
         if isinstance(item, KeyVal):
             if item.key in my_dict.keys():
