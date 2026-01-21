@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 from dataclasses import dataclass
@@ -50,7 +52,7 @@ class PackageName:
         return '.'.join([self.base] + list(self.ext))
 
     @staticmethod
-    def parse(name: str) -> 'PackageName':
+    def parse(name: str) -> PackageName:
         s = name.split('.')
         return PackageName(s[0], s[1:])
 
@@ -121,7 +123,7 @@ class GithubPackage:
 
     def concrete(
         self, override_branch_tag_commit_or_path: Optional[str] = None, ext: Optional[Iterable[str]] = None
-    ) -> Union['ConcretePackage', 'LocalPackage']:
+    ) -> Union[ConcretePackage, LocalPackage]:
         package_name = PackageName(self.package_name.base, ext) if ext else self.package_name
         if override_branch_tag_commit_or_path and os.path.isdir(override_branch_tag_commit_or_path):
             return LocalPackage(self, package_name, override_branch_tag_commit_or_path)
@@ -195,7 +197,7 @@ class LocalPackage(GithubPackage):
 
     def concrete(
         self, override_branch_tag_commit_or_path: Optional[str] = None, ext: Optional[Iterable[str]] = None
-    ) -> Union['ConcretePackage', 'LocalPackage']:
+    ) -> Union[ConcretePackage, LocalPackage]:
         package_name = PackageName(self.package_name.base, ext) if ext else self.package_name
         if override_branch_tag_commit_or_path and os.path.isdir(override_branch_tag_commit_or_path):
             return LocalPackage(self, package_name, override_branch_tag_commit_or_path, self.index)
@@ -265,7 +267,7 @@ class ConcretePackage(GithubPackage):
 
     def concrete(
         self, override_branch_tag_commit_or_path: Optional[str] = None, ext: Optional[Iterable[str]] = None
-    ) -> Union['ConcretePackage', 'LocalPackage']:
+    ) -> Union[ConcretePackage, LocalPackage]:
         package_name = PackageName(self.package_name.base, ext) if ext else self.package_name
         if override_branch_tag_commit_or_path and os.path.isdir(override_branch_tag_commit_or_path):
             return LocalPackage(self, package_name, override_branch_tag_commit_or_path, self.index)
@@ -288,8 +290,7 @@ class ConcretePackage(GithubPackage):
             )
 
     @staticmethod
-    def parse(url: str, package: GithubPackage, idx: Union[int, str], load_versions: bool) -> 'ConcretePackage':
-        global tag_cache
+    def parse(url: str, package: GithubPackage, idx: Union[int, str], load_versions: bool) -> ConcretePackage:
         if package.ssh_git:
             commit = url.split('&rev=')[1]
             tag = None
@@ -340,7 +341,7 @@ class PackageVersion:
 class PackageMetadata:
     __slots__ = ['repo', 'rev', 'org', 'inputs']
 
-    def __init__(self, repo: str, rev: str, org: str, inputs: Mapping[str, Union['PackageMetadata', 'Follows']]):
+    def __init__(self, repo: str, rev: str, org: str, inputs: Mapping[str, Union[PackageMetadata, Follows]]):
         self.repo = repo
         self.rev = rev
         self.org = org

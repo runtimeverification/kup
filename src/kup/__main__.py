@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import configparser
 import json
 import os
@@ -5,8 +7,8 @@ import shutil
 import subprocess
 import sys
 import textwrap
-from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
-from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
+from argparse import ArgumentParser, RawDescriptionHelpFormatter, _HelpAction
+from typing import TYPE_CHECKING
 
 import giturlparse
 import requests
@@ -50,6 +52,11 @@ from .package import (
     PackageName,
     PackageVersion,
 )
+
+if TYPE_CHECKING:
+    from argparse import Namespace
+    from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
+
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
@@ -689,7 +696,7 @@ def add_new_package(
         substituters_to_add = []
         trusted_public_keys_to_add = []
 
-        for (s, pub_key) in zip(substituters, trusted_public_keys):
+        for (s, pub_key) in zip(substituters, trusted_public_keys, strict=True):
             if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS:
                 pass
 
@@ -995,7 +1002,7 @@ def main() -> None:
                 args.uri,
                 package_name,
                 args.github_access_token,
-                {repo: key for [repo, key] in args.cache_access_token} if args.cache_access_token else {},
+                dict(args.cache_access_token),
                 args.strict,
             )
         elif args.command == 'shell':

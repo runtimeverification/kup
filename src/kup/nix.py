@@ -175,10 +175,10 @@ def install_substituters_nixos(name: str, substituters: List[str], pub_keys: Lis
   nix = {{
     settings = {{
       substituters = [
-        "{substituters_str}"
+        {substituters_str!r}
       ];
       trusted-public-keys = [
-        "{pub_keys_str}"
+        {pub_keys_str!r}
       ];
     }};
   }};
@@ -293,7 +293,7 @@ def install_substituters_non_nixos(conf_file: str, substituters: List[str], pub_
 def print_substituters_warning() -> None:
     new_trusted_users = TRUSTED_USERS if USER_IS_TRUSTED else TRUSTED_USERS + [USER]
     add_user_to_trusted = ' '.join(new_trusted_users)
-    add_user_to_trusted_nix = ' '.join([f'"{s}"' for s in new_trusted_users])
+    add_user_to_trusted_nix = ' '.join([f'{s!r}' for s in new_trusted_users])
     rich.print(
         f'\n⚠️ [yellow] The k-framework binary caches [green]{K_FRAMEWORK_CACHE}[/] and [green]{K_FRAMEWORK_BINARY_CACHE}[/] are\n'
         'not configured in your nix installation and the current user does not have sufficient permissions to add and use them.\n'
