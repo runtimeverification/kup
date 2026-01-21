@@ -17,7 +17,7 @@
           p2n = poetry2nix.lib.mkPoetry2Nix { pkgs = final; };
         in {
           kup = p2n.mkPoetryApplication {
-            python = prev.python39;
+            python = prev.python311;
             projectDir = ./.;
             # We remove `"dev"` from `checkGroups`, so that poetry2nix does not try to resolve dev dependencies.
             checkGroups = [];
