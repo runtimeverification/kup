@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
 
 import rich
 
@@ -19,13 +18,13 @@ K_FRAMEWORK_BINARY_CACHE = 'https://k-framework-binary.cachix.org'
 K_FRAMEWORK_BINARY_CACHE_NAME = 'k-framework-binary'
 
 if os.path.exists('/run/current-system/nixos-version'):
-    with open('/run/current-system/nixos-version', 'r') as nixos_version:
-        NIXOS_VERSION: Optional[str] = nixos_version.read()
+    with open('/run/current-system/nixos-version') as nixos_version:
+        NIXOS_VERSION: str | None = nixos_version.read()
 else:
     NIXOS_VERSION = None
 
 
-def nix_substituters(subsituters: List[str], public_keys: List[str]) -> List[str]:
+def nix_substituters(subsituters: list[str], public_keys: list[str]) -> list[str]:
     return [
         '--option',
         'extra-substituters',
@@ -40,8 +39,8 @@ DEFAULT_NIX_SUBSTITUTER = nix_substituters([K_FRAMEWORK_CACHE], [K_FRAMEWORK_PUB
 
 
 def nix_raw(
-    args: List[str],
-    extra_flags: List[str] = DEFAULT_NIX_SUBSTITUTER,
+    args: list[str],
+    extra_flags: list[str] = DEFAULT_NIX_SUBSTITUTER,
     gc_dont_gc: bool = True,
     exit_on_error: bool = True,
     verbose: bool = False,
@@ -112,7 +111,7 @@ CURRENT_TRUSTED_PUBLIC_KEYS = []
 CURRENT_NETRC_FILE = None
 
 
-def check_substituters() -> Tuple[bool, bool]:
+def check_substituters() -> tuple[bool, bool]:
     global TRUSTED_USERS, CURRENT_SUBSTITUTERS, CURRENT_TRUSTED_PUBLIC_KEYS, CURRENT_NETRC_FILE
     try:
         cmd = SHOW_CONFIG_COMMAND.split()
@@ -166,7 +165,7 @@ in {
 """
 
 
-def install_substituters_nixos(name: str, substituters: List[str], pub_keys: List[str]) -> None:
+def install_substituters_nixos(name: str, substituters: list[str], pub_keys: list[str]) -> None:
     nixos_path = '/etc/nixos'
     substituters_str = ' '.join(substituters)
     pub_keys_str = ' '.join(pub_keys)
@@ -224,11 +223,11 @@ class KeyVal:
     value: str
 
 
-def read_config(path: str) -> List[Union[Comment, Blank, KeyVal]]:
-    conf: List[Union[Comment, Blank, KeyVal]] = []
+def read_config(path: str) -> list[Comment | Blank | KeyVal]:
+    conf: list[Comment | Blank | KeyVal] = []
     if not os.path.exists(path):
         return conf
-    with open(path, 'r') as fp:
+    with open(path) as fp:
         for line in fp:
             stripped = line.strip()
             if stripped.startswith('#'):
@@ -241,7 +240,7 @@ def read_config(path: str) -> List[Union[Comment, Blank, KeyVal]]:
     return conf
 
 
-def write_config(path: str, conf: List[Union[Comment, Blank, KeyVal]]) -> None:
+def write_config(path: str, conf: list[Comment | Blank | KeyVal]) -> None:
     with open(path, 'w') as fp:
         for c in conf:
             if isinstance(c, Comment):
@@ -252,7 +251,7 @@ def write_config(path: str, conf: List[Union[Comment, Blank, KeyVal]]) -> None:
                 fp.write(f'{c.key} = {c.value}\n')
 
 
-def contains_key(config: List[Union[Comment, Blank, KeyVal]], key: str) -> bool:
+def contains_key(config: list[Comment | Blank | KeyVal], key: str) -> bool:
     for item in config:
         if isinstance(item, KeyVal) and item.key == key:
             return True
@@ -260,8 +259,8 @@ def contains_key(config: List[Union[Comment, Blank, KeyVal]], key: str) -> bool:
 
 
 def append_to_config(
-    config: List[Union[Comment, Blank, KeyVal]], my_dict: dict[str, str]
-) -> List[Union[Comment, Blank, KeyVal]]:
+    config: list[Comment | Blank | KeyVal], my_dict: dict[str, str]
+) -> list[Comment | Blank | KeyVal]:
     for n, item in enumerate(config):
         if isinstance(item, KeyVal):
             if item.key in my_dict.keys():
@@ -269,7 +268,7 @@ def append_to_config(
     return config
 
 
-def install_substituters_non_nixos(conf_file: str, substituters: List[str], pub_keys: List[str]) -> None:
+def install_substituters_non_nixos(conf_file: str, substituters: list[str], pub_keys: list[str]) -> None:
     conf = read_config(conf_file)
     if not contains_key(conf, 'substituters'):
         conf.append(KeyVal('substituters', 'https://cache.nixos.org/'))
@@ -321,7 +320,7 @@ def print_substituters_warning() -> None:
     rich.print('Please select option [1] or [2], or press any key to continue without any changes: ')
 
 
-def install_substituters(name: str, substituters: List[str], pub_keys: List[str]) -> None:
+def install_substituters(name: str, substituters: list[str], pub_keys: list[str]) -> None:
     if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         return
@@ -332,7 +331,7 @@ def install_substituters(name: str, substituters: List[str], pub_keys: List[str]
         install_substituters_non_nixos('/etc/nix/nix.conf', substituters, pub_keys)
 
 
-def ask_install_substituters(name: str, substituters: List[str], pub_keys: List[str]) -> None:
+def ask_install_substituters(name: str, substituters: list[str], pub_keys: list[str]) -> None:
     if USER_IS_TRUSTED:
         # no need to write the config, as we can just pass it as an extra flag.
         return
@@ -375,11 +374,11 @@ def set_netrc_file(netrc_file: str) -> None:
 # expression. This may cause the process to run out of memory, but hasn't been observed for our
 # derivations in practice, so should be ok to do.
 def nix(
-    args: List[str],
+    args: list[str],
     is_install: bool = True,
     exit_on_error: bool = True,
-    extra_substituters: Optional[List[str]] = None,
-    extra_public_keys: Optional[List[str]] = None,
+    extra_substituters: list[str] | None = None,
+    extra_public_keys: list[str] | None = None,
     verbose: bool = False,
     refresh: bool = False,
 ) -> bytes:
@@ -416,9 +415,9 @@ def nix(
 
 
 def nix_detach(
-    args: List[str],
-    extra_substituters: Optional[List[str]] = None,
-    extra_public_keys: Optional[List[str]] = None,
+    args: list[str],
+    extra_substituters: list[str] | None = None,
+    extra_public_keys: list[str] | None = None,
     verbose: bool = False,
     refresh: bool = False,
 ) -> None:
@@ -462,7 +461,7 @@ def nix_detach(
     )
 
 
-def get_extra_substituters_from_flake(path: str, extra_opts: List[str]) -> Tuple[List[str], List[str]]:
+def get_extra_substituters_from_flake(path: str, extra_opts: list[str]) -> tuple[list[str], list[str]]:
     if os.path.exists('/tmp/tempflake') and os.path.isdir('/tmp/tempflake'):
         shutil.rmtree('/tmp/tempflake')
 
@@ -496,7 +495,7 @@ def publish_and_pin_package(
     nix_path: str,
     cache: str,
     key: str,
-    keep_days: Optional[str] = None,
+    keep_days: str | None = None,
 ) -> None:
     subprocess.check_output(['cachix', 'push', cache, nix_path])
     subprocess.check_output(
