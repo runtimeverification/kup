@@ -52,6 +52,7 @@ from .package import (
     PackageName,
     PackageVersion,
 )
+from .telemetry import emit_event
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -199,7 +200,7 @@ def package_metadata_tree(p: PackageMetadata | Follows, lbl: str | None = None, 
         follows = (' - follows [green]' + '/'.join(p.follows)) if type(p) == Follows else ''
         status = ''
         if show_status and type(p) == PackageMetadata:
-            auth = {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
+            auth = {'Authorization': f"Bearer {os.getenv('GH_TOKEN')}"} if os.getenv('GH_TOKEN') else {}
             commits = requests.get(f'https://api.github.com/repos/{p.org}/{p.repo}/commits', headers=auth)
             if commits.ok:
                 commits_list = [c['sha'] for c in commits.json()]
@@ -261,8 +262,8 @@ def reload_packages(load_versions: bool = True) -> None:
     if pinned.ok:
         pinned_package_cache = {r['name']: r['lastRevision']['storePath'] for r in pinned.json()}
 
-    if os.path.exists(f'{os.getenv("HOME")}/.nix-profile/manifest.json'):
-        manifest_file = open(f'{os.getenv("HOME")}/.nix-profile/manifest.json')
+    if os.path.exists(f"{os.getenv('HOME')}/.nix-profile/manifest.json"):
+        manifest_file = open(f"{os.getenv('HOME')}/.nix-profile/manifest.json")
         manifest = json.loads(manifest_file.read())['elements']
         if type(manifest) is list:
             manifest = dict(enumerate(manifest))
@@ -360,7 +361,7 @@ def list_package(
                     c['commit']['message'],
                     tagged_releases[c['sha']]['name'] if c['sha'] in tagged_releases else None,
                     c['commit']['committer']['date'],
-                    f'github:{listed_package.org}/{listed_package.repo}/{c["sha"]}#{listed_package.package_name}'
+                    f"github:{listed_package.org}/{listed_package.repo}/{c['sha']}#{listed_package.package_name}"
                     in pinned_package_cache.keys(),
                 )
                 for c in commits.json()
@@ -487,6 +488,15 @@ def install_package(
     _, git_token_options = package.concrete_repo_path_with_access
     overrides = mk_override_args(package, package_overrides)
 
+    emit_event(
+        'kup_install_start',
+        {
+            'package': package_name.base,
+            'version': package_version,
+            'has_overrides': len(package_overrides) > 0 if package_overrides else False,
+        },
+    )
+
     if not overrides and package.uri in pinned_package_cache:
         rich.print(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
         nix(
@@ -530,6 +540,16 @@ def install_package(
     else:
         display_version = None
     display_version = f' ({display_version})' if display_version is not None else ''
+
+    emit_event(
+        'kup_install_complete',
+        {
+            'package': package_name.base,
+            'version': package_version or 'latest',
+            'was_update': verb == 'updated',
+            'from_cache': package.uri in pinned_package_cache and not overrides,
+        },
+    )
 
     rich.print(
         f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/]."
