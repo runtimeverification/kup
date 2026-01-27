@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kup"
-version = "0.2.5"
+version = "0.2.6"
 description = "kup is a tool for managing installations of the K framework along with the different available semantics"
 readme = "README.md"
 requires-python = ">=3.10,<4"
