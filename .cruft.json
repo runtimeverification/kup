@@ -1,6 +1,6 @@
 {
   "template": "https://github.com/runtimeverification/python-project-template.git",
-  "commit": "70e5fe42fbddd7b0f89c56219ac9012c75028b84",
+  "commit": "7a095b4dd0a51916da0a728b8fdd9adf7e469a68",
   "checkout": null,
   "context": {
     "cookiecutter": {
@@ -11,7 +11,8 @@
       "description": "kup is a tool for managing installations of the K framework along with the different available semantics",
       "author_name": "Runtime Verification, Inc.",
       "author_email": "contact@runtimeverification.com",
-      "_template": "https://github.com/runtimeverification/python-project-template.git"
+      "_template": "https://github.com/runtimeverification/python-project-template.git",
+      "_commit": "7a095b4dd0a51916da0a728b8fdd9adf7e469a68"
     }
   },
   "directory": null

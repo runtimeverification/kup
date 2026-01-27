@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import configparser
 import json
 import os
@@ -5,8 +7,8 @@ import shutil
 import subprocess
 import sys
 import textwrap
-from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _HelpAction
-from typing import Any, Dict, List, MutableMapping, Optional, Tuple, Union
+from argparse import ArgumentParser, RawDescriptionHelpFormatter, _HelpAction
+from typing import TYPE_CHECKING
 
 import giturlparse
 import requests
@@ -50,6 +52,12 @@ from .package import (
     PackageName,
     PackageVersion,
 )
+
+if TYPE_CHECKING:
+    from argparse import Namespace
+    from collections.abc import MutableMapping
+    from typing import Any
+
 
 console = Console(theme=Theme({'markdown.code': 'green'}))
 
@@ -100,9 +108,10 @@ for config_path in BaseDirectory.load_config_paths('kup'):
             )
 
 
-packages: Dict[str, GithubPackage] = {}
-installed_packages: List[str] = []
-pinned_package_cache: Dict[str, str] = {}
+packages: dict[str, GithubPackage] = {}
+installed_packages: list[str] = []
+pinned_package_cache: dict[str, str] = {}
+
 
 # This walk function walks the metadata returned by nix, where inputs can either point to a final node in
 # the root of the tree or an indirection/pointer path through the tree
@@ -121,7 +130,7 @@ def walk_path_nix_meta(nodes: dict, current_node_id: str, path: list[str]) -> st
 # walk all the inputs recursively and collect only the ones pointing to runtimeverification repos
 def parse_package_metadata(
     nodes: dict, current_node_id: str, root_level: bool = False, repo: str = ''
-) -> Union[PackageMetadata, None]:
+) -> PackageMetadata | None:
     if not (
         'original' in nodes[current_node_id]
         and 'owner' in nodes[current_node_id]['original']
@@ -138,7 +147,7 @@ def parse_package_metadata(
         org = 'runtimeverification'
 
     raw_inputs = nodes[current_node_id]['inputs'].items() if 'inputs' in nodes[current_node_id] else []
-    inputs: MutableMapping[str, Union[PackageMetadata, Follows]] = {}
+    inputs: MutableMapping[str, PackageMetadata | Follows] = {}
 
     for input_key, input_path_or_node_id in raw_inputs:
         if type(input_path_or_node_id) == str:  # direct input
@@ -158,7 +167,7 @@ def parse_package_metadata(
     return PackageMetadata(repo, rev, org, inputs)
 
 
-def get_package_metadata(package: Union[ConcretePackage, GithubPackage]) -> PackageMetadata:
+def get_package_metadata(package: ConcretePackage | GithubPackage) -> PackageMetadata:
     if type(package) == ConcretePackage:
         path, git_token_options = package.concrete_repo_path_with_access
     else:
@@ -182,9 +191,7 @@ def get_package_metadata(package: Union[ConcretePackage, GithubPackage]) -> Pack
 
 
 # build a rich.Tree of inputs for the given package metadata
-def package_metadata_tree(
-    p: Union[PackageMetadata, Follows], lbl: Union[str, None] = None, show_status: bool = False
-) -> Tree:
+def package_metadata_tree(p: PackageMetadata | Follows, lbl: str | None = None, show_status: bool = False) -> Tree:
     if lbl is None:
         tree = Tree('Inputs:')
     else:
@@ -216,7 +223,7 @@ def package_metadata_tree(
     return tree
 
 
-def lookup_available_package(raw_name: str) -> Optional[GithubPackage]:
+def lookup_available_package(raw_name: str) -> GithubPackage | None:
     for p in available_packages:
         name_prefix = f'packages.{ARCH}.{p.package_name.base}'
         if raw_name == name_prefix:
@@ -303,7 +310,7 @@ def reload_packages(load_versions: bool = True) -> None:
             packages[available_package.package_name.base] = available_package
 
 
-def highlight_row(condition: bool, xs: List[str]) -> List[str]:
+def highlight_row(condition: bool, xs: list[str]) -> list[str]:
     if condition:
         return [f'\033[92m{x}\033[0m' for x in xs]
     else:
@@ -314,7 +321,7 @@ def list_package(
     package_name: str,
     show_inputs: bool,
     show_status: bool,
-    version: Optional[str] = None,
+    version: str | None = None,
 ) -> None:
     reload_packages()
     if package_name != 'all':
@@ -334,9 +341,7 @@ def list_package(
             auth = (
                 {'Authorization': f'Bearer {listed_package.access_token}'}
                 if listed_package.access_token
-                else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
-                if os.getenv('GH_TOKEN')
-                else {}
+                else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
             )
             tags = requests.get(
                 f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/tags', headers=auth
@@ -379,14 +384,16 @@ def list_package(
             table = SingleTable(table_data)
             print(table.table)
     else:
-        table_data = [['Package name (alias)', 'Installed version', 'Status'],] + [
+        table_data = [
+            ['Package name (alias)', 'Installed version', 'Status'],
+        ] + [
             [
                 str(PackageName(alias, p.package_name.ext).pretty_name),
-                f'{p.commit[:7] if TERMINAL_WIDTH < 80 else p.commit}{" (" + p.tag + ")" if p.tag else ""}'
-                if type(p) == ConcretePackage
-                else '\033[3mlocal checkout\033[0m'
-                if type(p) == LocalPackage
-                else '',
+                (
+                    f'{p.commit[:7] if TERMINAL_WIDTH < 80 else p.commit}{" (" + p.tag + ")" if p.tag else ""}'
+                    if type(p) == ConcretePackage
+                    else '\033[3mlocal checkout\033[0m' if type(p) == LocalPackage else ''
+                ),
                 p.status if type(p) == ConcretePackage else INSTALLED if type(p) == LocalPackage else AVAILABLE,
             ]
             for alias, p in packages.items()
@@ -405,9 +412,7 @@ def is_sha1(maybe_sha: str) -> bool:
     return True
 
 
-def walk_package_metadata(
-    node: Union[PackageMetadata, Follows], path: list[str]
-) -> Union[PackageMetadata, Follows, None]:
+def walk_package_metadata(node: PackageMetadata | Follows, path: list[str]) -> PackageMetadata | Follows | None:
     if len(path) == 0:
         return node
     else:
@@ -417,7 +422,7 @@ def walk_package_metadata(
             return None
 
 
-def mk_override_args(package: GithubPackage, overrides: List[List[str]]) -> List[str]:
+def mk_override_args(package: GithubPackage, overrides: list[list[str]]) -> list[str]:
     if not overrides:
         return []
     inputs = get_package_metadata(package)
@@ -467,8 +472,8 @@ def mk_override_args(package: GithubPackage, overrides: List[List[str]]) -> List
 
 def install_package(
     package_name: PackageName,
-    package_version: Optional[str],
-    package_overrides: List[List[str]],
+    package_version: str | None,
+    package_overrides: list[list[str]],
 ) -> None:
     reload_packages()
     if package_name.base not in packages:
@@ -547,7 +552,7 @@ def uninstall_package(package_name: str) -> None:
         rich.print(
             "⚠️ [yellow]You are about to remove '[green]kup[/]' "
             'with other K framework packages still installed.\n'
-            '[/]Are you sure you want to continue? \[y/N]'  # noqa: W605
+            '[/]Are you sure you want to continue? \\[y/N]'
         )
 
         yes = {'yes', 'y', 'ye', ''}
@@ -568,7 +573,7 @@ def uninstall_package(package_name: str) -> None:
         nix(['profile', 'remove', str(package.index)], is_install=False)
 
 
-def ping_nix_store(url: str, access_token: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+def ping_nix_store(url: str, access_token: str | None = None) -> tuple[bool, str | None]:
     auth = {'Authorization': f'Bearer {access_token}'} if access_token else {}
 
     if 'cachix.org' in url:
@@ -591,13 +596,11 @@ def ping_nix_store(url: str, access_token: Optional[str] = None) -> Tuple[bool, 
     return reachable, valid_token
 
 
-def check_github_api_accessible(org: str, repo: str, access_token: Optional[str]) -> bool:
+def check_github_api_accessible(org: str, repo: str, access_token: str | None) -> bool:
     auth = (
         {'Authorization': f'Bearer {access_token}'}
         if access_token
-        else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'}
-        if os.getenv('GH_TOKEN')
-        else {}
+        else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
     )
     commits = requests.get(f'https://api.github.com/repos/{org}/{repo}/commits', headers=auth)
     return commits.ok
@@ -606,8 +609,8 @@ def check_github_api_accessible(org: str, repo: str, access_token: Optional[str]
 def add_new_package(
     uri: str,
     package_name: PackageName,
-    github_access_token: Optional[str],
-    cache_access_tokens: Dict[str, str],
+    github_access_token: str | None,
+    cache_access_tokens: dict[str, str],
     strict: bool,
 ) -> None:
     if '/' in uri:
@@ -689,7 +692,7 @@ def add_new_package(
         substituters_to_add = []
         trusted_public_keys_to_add = []
 
-        for (s, pub_key) in zip(substituters, trusted_public_keys):
+        for s, pub_key in zip(substituters, trusted_public_keys, strict=True):
             if s in CURRENT_SUBSTITUTERS and pub_key in CURRENT_TRUSTED_PUBLIC_KEYS:
                 pass
 
@@ -748,7 +751,7 @@ def add_new_package(
         rich.print(f"❗ The URI '[red]{uri}[/]' is invalid.\n" "   The correct format is '[green]org/repo[/]'.")
 
 
-def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: Optional[int] = None) -> None:
+def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: int | None = None) -> None:
     split = uri_or_path_with_package_name.split('#')
     if len(split) == 2:
         uri_or_path = split[0]
@@ -826,35 +829,35 @@ def publish_package(cache: str, uri_or_path_with_package_name: str, keep_days: O
 def print_help(subcommand: str, parser: ArgumentParser) -> None:
     parser.print_help()
     print('')
-    with open(os.path.join(KUP_DIR, f'{subcommand}-help.md'), 'r') as help_file:
+    with open(os.path.join(KUP_DIR, f'{subcommand}-help.md')) as help_file:
         console.print(Markdown(help_file.read(), code_theme='emacs'))
     parser.exit()
 
 
 class _HelpListAction(_HelpAction):
     def __call__(
-        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: str | None = None
     ) -> None:
         print_help('list', parser)
 
 
 class _HelpInstallAction(_HelpAction):
     def __call__(
-        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: str | None = None
     ) -> None:
         print_help('install', parser)
 
 
 class _HelpShellAction(_HelpAction):
     def __call__(
-        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: str | None = None
     ) -> None:
         print_help('shell', parser)
 
 
 class _HelpAddAction(_HelpAction):
     def __call__(
-        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: Optional[str] = None
+        self, parser: ArgumentParser, namespace: Namespace, values: Any, option_string: str | None = None
     ) -> None:
         print_help('add', parser)
 
@@ -865,13 +868,11 @@ def main() -> None:
         description='The K Framework installer',
         prog='kup',
         formatter_class=RawDescriptionHelpFormatter,
-        epilog=textwrap.dedent(
-            """\
+        epilog=textwrap.dedent("""\
          additional information:
              For more detailed help for the different sub-commands, call
                kup {list,install,add,shell} --help
-         """
-        ),
+         """),
     )
     verbose_arg = ArgumentParser(add_help=False)
     verbose_arg.add_argument('-v', '--verbose', action='store_true', help='verbose output from nix')
@@ -995,7 +996,7 @@ def main() -> None:
                 args.uri,
                 package_name,
                 args.github_access_token,
-                {repo: key for [repo, key] in args.cache_access_token} if args.cache_access_token else {},
+                dict(args.cache_access_token),
                 args.strict,
             )
         elif args.command == 'shell':

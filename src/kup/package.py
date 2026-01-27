@@ -1,31 +1,37 @@
+from __future__ import annotations
+
 import json
 import os
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import requests
 from xdg import BaseDirectory
 
 from .nix import ARCH, nix
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
+
 INSTALLED = '🟢 \033[92minstalled\033[0m'
 AVAILABLE = '🔵 \033[94mavailable\033[0m'
 UPDATE = '🟠 \033[93mnewer version available\033[0m'
 LOCAL = '\033[3mlocal checkout\033[0m'
 
-tag_cache: Dict[str, Optional[str]] = {}
+tag_cache: dict[str, str | None] = {}
 
 # Load any private packages
 for config_path in BaseDirectory.load_config_paths('kup'):
     if os.path.exists(os.path.join(config_path, 'tag_cache')):
-        with open(os.path.join(config_path, 'tag_cache'), 'r') as f:
+        with open(os.path.join(config_path, 'tag_cache')) as f:
             try:
                 tag_cache = json.loads(f.read())
             except Exception:
                 pass
 
 
-def save_tags(tags: Dict[str, Optional[str]]) -> None:
+def save_tags(tags: dict[str, str | None]) -> None:
     global tag_cache
     for config_path in BaseDirectory.load_config_paths('kup'):
         with open(os.path.join(config_path, 'tag_cache'), 'w') as f:
@@ -50,7 +56,7 @@ class PackageName:
         return '.'.join([self.base] + list(self.ext))
 
     @staticmethod
-    def parse(name: str) -> 'PackageName':
+    def parse(name: str) -> PackageName:
         s = name.split('.')
         return PackageName(s[0], s[1:])
 
@@ -63,11 +69,11 @@ class GithubPackage:
         org: str,
         repo: str,
         package_name: PackageName,
-        branch: Optional[str] = None,
+        branch: str | None = None,
         ssh_git: bool = False,
-        access_token: Optional[str] = None,
-        substituters: Optional[list[str]] = None,
-        public_keys: Optional[list[str]] = None,
+        access_token: str | None = None,
+        substituters: list[str] | None = None,
+        public_keys: list[str] | None = None,
     ):
         self.org = org
         self.repo = repo
@@ -78,7 +84,7 @@ class GithubPackage:
         self.substituters = substituters if substituters is not None else []
         self.public_keys = public_keys if public_keys is not None else []
 
-    def repo_path_with_access(self, override_branch_tag_commit_or_path: Optional[str] = None) -> Tuple[str, List[str]]:
+    def repo_path_with_access(self, override_branch_tag_commit_or_path: str | None = None) -> tuple[str, list[str]]:
         if override_branch_tag_commit_or_path and os.path.isdir(override_branch_tag_commit_or_path):
             return os.path.abspath(override_branch_tag_commit_or_path), []
         else:
@@ -104,7 +110,7 @@ class GithubPackage:
                 access = ['--option', 'access-tokens', f'github.com={self.access_token}'] if self.access_token else []
                 return f'github:{self.org}/{self.repo}{branch_commit_or_tag}', access
 
-    def url(self, override_branch_tag_or_commit: Optional[str] = None) -> str:
+    def url(self, override_branch_tag_or_commit: str | None = None) -> str:
         path, git_token_options = self.repo_path_with_access(override_branch_tag_or_commit)
         result = nix(['flake', 'metadata', path, '--json'] + git_token_options, is_install=False, refresh=True)
         meta = json.loads(result)
@@ -120,8 +126,8 @@ class GithubPackage:
         return f'github:{self.org}/{self.repo}'
 
     def concrete(
-        self, override_branch_tag_commit_or_path: Optional[str] = None, ext: Optional[Iterable[str]] = None
-    ) -> Union['ConcretePackage', 'LocalPackage']:
+        self, override_branch_tag_commit_or_path: str | None = None, ext: Iterable[str] | None = None
+    ) -> ConcretePackage | LocalPackage:
         package_name = PackageName(self.package_name.base, ext) if ext else self.package_name
         if override_branch_tag_commit_or_path and os.path.isdir(override_branch_tag_commit_or_path):
             return LocalPackage(self, package_name, override_branch_tag_commit_or_path)
@@ -169,7 +175,7 @@ class LocalPackage(GithubPackage):
         github_package: GithubPackage,
         package_name: PackageName,
         path: str,
-        index: Union[int, str] = -1,
+        index: int | str = -1,
     ):
         self.path = path
         self.index = index
@@ -185,7 +191,7 @@ class LocalPackage(GithubPackage):
         )
 
     @property
-    def concrete_repo_path_with_access(self) -> Tuple[str, List[str]]:
+    def concrete_repo_path_with_access(self) -> tuple[str, list[str]]:
         return super().repo_path_with_access(self.path)
 
     @property
@@ -194,8 +200,8 @@ class LocalPackage(GithubPackage):
         return f'{path}#{self.package_name}'
 
     def concrete(
-        self, override_branch_tag_commit_or_path: Optional[str] = None, ext: Optional[Iterable[str]] = None
-    ) -> Union['ConcretePackage', 'LocalPackage']:
+        self, override_branch_tag_commit_or_path: str | None = None, ext: Iterable[str] | None = None
+    ) -> ConcretePackage | LocalPackage:
         package_name = PackageName(self.package_name.base, ext) if ext else self.package_name
         if override_branch_tag_commit_or_path and os.path.isdir(override_branch_tag_commit_or_path):
             return LocalPackage(self, package_name, override_branch_tag_commit_or_path, self.index)
@@ -240,13 +246,13 @@ class ConcretePackage(GithubPackage):
         package: PackageName,
         status: str,
         commit: str,
-        tag: Optional[str] = None,
-        index: Union[int, str] = -1,
+        tag: str | None = None,
+        index: int | str = -1,
         ssh_git: bool = False,
-        access_token: Optional[str] = None,
-        substituters: Optional[list[str]] = None,
-        public_keys: Optional[list[str]] = None,
-        update_branch: Optional[str] = None,
+        access_token: str | None = None,
+        substituters: list[str] | None = None,
+        public_keys: list[str] | None = None,
+        update_branch: str | None = None,
     ):
         self.commit = commit
         self.status = status
@@ -255,7 +261,7 @@ class ConcretePackage(GithubPackage):
         super().__init__(org, repo, package, update_branch, ssh_git, access_token, substituters, public_keys)
 
     @property
-    def concrete_repo_path_with_access(self) -> Tuple[str, List[str]]:
+    def concrete_repo_path_with_access(self) -> tuple[str, list[str]]:
         return super().repo_path_with_access(self.commit)
 
     @property
@@ -264,8 +270,8 @@ class ConcretePackage(GithubPackage):
         return f'{path}#{self.package_name}'
 
     def concrete(
-        self, override_branch_tag_commit_or_path: Optional[str] = None, ext: Optional[Iterable[str]] = None
-    ) -> Union['ConcretePackage', 'LocalPackage']:
+        self, override_branch_tag_commit_or_path: str | None = None, ext: Iterable[str] | None = None
+    ) -> ConcretePackage | LocalPackage:
         package_name = PackageName(self.package_name.base, ext) if ext else self.package_name
         if override_branch_tag_commit_or_path and os.path.isdir(override_branch_tag_commit_or_path):
             return LocalPackage(self, package_name, override_branch_tag_commit_or_path, self.index)
@@ -288,8 +294,7 @@ class ConcretePackage(GithubPackage):
             )
 
     @staticmethod
-    def parse(url: str, package: GithubPackage, idx: Union[int, str], load_versions: bool) -> 'ConcretePackage':
-        global tag_cache
+    def parse(url: str, package: GithubPackage, idx: int | str, load_versions: bool) -> ConcretePackage:
         if package.ssh_git:
             commit = url.split('&rev=')[1]
             tag = None
@@ -329,7 +334,7 @@ class ConcretePackage(GithubPackage):
 class PackageVersion:
     __slots__ = ['sha', 'message', 'tag', 'merged_at', 'cached']
 
-    def __init__(self, sha: str, message: str, tag: Optional[str], merged_at: str, cached: bool):
+    def __init__(self, sha: str, message: str, tag: str | None, merged_at: str, cached: bool):
         self.sha = sha
         self.message = message
         self.tag = tag
@@ -340,7 +345,7 @@ class PackageVersion:
 class PackageMetadata:
     __slots__ = ['repo', 'rev', 'org', 'inputs']
 
-    def __init__(self, repo: str, rev: str, org: str, inputs: Mapping[str, Union['PackageMetadata', 'Follows']]):
+    def __init__(self, repo: str, rev: str, org: str, inputs: Mapping[str, PackageMetadata | Follows]):
         self.repo = repo
         self.rev = rev
         self.org = org

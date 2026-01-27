@@ -22,22 +22,30 @@ jobs:
           install_url: https://releases.nixos.org/nix/nix-2.32.0/install
           extra_nix_config:
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-          
       - uses: cachix/cachix-action@v12
         with:
           name: k-framework
           signingKey: '${{ secrets.CACHIX_PUBLIC_TOKEN }}'
           skipPush: true
-      - uses: actions/setup-python@v4
+      - name: 'Install Python'
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-      - name: 'Install Poetry'
+          python-version: '3.10'
+      - name: 'Get uv release'
+        id: uv_release
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          poetry --version
-      - name: 'Formatting and Type Checking'
-        run: make
+          echo uv_version=$(cat deps/uv_release) >> "${GITHUB_OUTPUT}"
+      - name: 'Install uv'
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ steps.uv_release.outputs.uv_version }}
+      - name: 'Run code quality checks'
+        run: make check
+      - name: 'Run pyupgrade'
+        run: make pyupgrade
+      - name: 'Run unit tests'
+        run: make cov-unit
       - name: 'Kup list works'
-        run: poetry run kup list
+        run: uv run kup list
       - name: 'Build via Nix'
         run: nix build
