@@ -14,7 +14,9 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 KPROFILE_CONFIG_DIR: Final = Path.home() / '.config' / 'kprofile'
 KPROFILE_CONFIG_FILE: Final = KPROFILE_CONFIG_DIR / 'config.toml'
-TELEMETRY_MESSAGE: Final = f'Telemetry: sending anonymous usage data. You can opt out by setting KPROFILE_TELEMETRY_DISABLED=true or consent=false in {KPROFILE_CONFIG_FILE}'
+TELEMETRY_MESSAGE: Final = (
+    f'Telemetry: sending anonymous usage data. You can opt out by setting KPROFILE_TELEMETRY_DISABLED=true or consent=false in {KPROFILE_CONFIG_FILE}'
+)
 
 
 def _get_user_id() -> str:
@@ -58,5 +60,7 @@ def emit_event(event: str, properties: dict | None = None) -> None:
             json={'user_id': _get_user_id(), 'event': event, 'properties': properties},
             timeout=2,
         )
+    except requests.exceptions.ReadTimeout:
+        _LOGGER.debug(f'Telemetry event timed out: {event}')
     except Exception as e:
         _LOGGER.warning(f'Telemetry event failed: {event}', exc_info=e)
