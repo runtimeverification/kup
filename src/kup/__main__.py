@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import time
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, _HelpAction
 from typing import TYPE_CHECKING
 
@@ -318,6 +319,16 @@ def highlight_row(condition: bool, xs: list[str]) -> list[str]:
         return xs
 
 
+def _format_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f'{seconds}s'
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f'{int(minutes)}m {secs:.0f}s'
+    hours, mins = divmod(minutes, 60)
+    return f'{int(hours)}h {int(mins)}m'
+
+
 def list_package(
     package_name: str,
     show_inputs: bool,
@@ -496,6 +507,7 @@ def install_package(
             'has_overrides': len(package_overrides) > 0 if package_overrides else False,
         },
     )
+    install_start_time = time.monotonic()
 
     if not overrides and package.uri in pinned_package_cache:
         rich.print(f" ⌛ Fetching cached version of '[green]{package_name.pretty_name}[/]' ...")
@@ -541,6 +553,7 @@ def install_package(
         display_version = None
     display_version = f' ({display_version})' if display_version is not None else ''
 
+    duration_seconds = round(time.monotonic() - install_start_time, 1)
     emit_event(
         'kup_install_complete',
         {
@@ -548,12 +561,14 @@ def install_package(
             'version': package_version or 'latest',
             'was_update': verb == 'updated',
             'from_cache': package.uri in pinned_package_cache and not overrides,
+            'duration_seconds': duration_seconds,
         },
     )
 
     rich.print(
         f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/]."
     )
+    rich.print(f' ⏱️  Elapsed time [green]{_format_duration(duration_seconds)}[/].')
 
 
 def uninstall_package(package_name: str) -> None:
