@@ -568,7 +568,7 @@ def install_package(
     rich.print(
         f" ✅ Successfully {verb} '[green]{package_name.base}[/]' version [blue]{package.uri}{display_version}[/]."
     )
-    rich.print(f' ⏱️  Elapsed time [green]{_format_duration(duration_seconds)}[/].')
+    rich.print(f' ⏱️ Elapsed time [green]{_format_duration(duration_seconds)}[/].')
 
 
 def uninstall_package(package_name: str) -> None:
