@@ -114,6 +114,22 @@ packages: dict[str, GithubPackage] = {}
 installed_packages: list[str] = []
 pinned_package_cache: dict[str, str] = {}
 
+OVERRIDES_FILE = os.path.join(BaseDirectory.save_config_path('kup'), 'overrides.json')
+
+
+def load_overrides() -> dict[str, list[list[str]]]:
+    """Load persisted override info for all packages."""
+    if os.path.exists(OVERRIDES_FILE):
+        with open(OVERRIDES_FILE) as f:
+            return json.loads(f.read())
+    return {}
+
+
+def save_overrides(all_overrides: dict[str, list[list[str]]]) -> None:
+    """Persist override info for all packages."""
+    with open(OVERRIDES_FILE, 'w') as f:
+        f.write(json.dumps(all_overrides, indent=2))
+
 
 # This walk function walks the metadata returned by nix, where inputs can either point to a final node in
 # the root of the tree or an indirection/pointer path through the tree
@@ -193,10 +209,21 @@ def get_package_metadata(package: ConcretePackage | GithubPackage) -> PackageMet
 
 
 # build a rich.Tree of inputs for the given package metadata
-def package_metadata_tree(p: PackageMetadata | Follows, lbl: str | None = None, show_status: bool = False) -> Tree:
+def package_metadata_tree(
+    p: PackageMetadata | Follows,
+    lbl: str | None = None,
+    show_status: bool = False,
+    overrides: dict[str, str] | None = None,
+    _input_path: str = '',
+) -> Tree:
+    if overrides is None:
+        overrides = {}
     if lbl is None:
         tree = Tree('Inputs:')
     else:
+        current_path = f'{_input_path}/{lbl}' if _input_path else lbl
+        override_target = overrides.get(current_path) or overrides.get(lbl, '')
+        override_tag = f' [bold yellow](override: {override_target})[/bold yellow]' if override_target else ''
         rev = f' - github:{p.org}/{p.repo} \033[3m({p.rev[:7]})\033[0m' if type(p) == PackageMetadata else ''
         follows = (' - follows [green]' + '/'.join(p.follows)) if type(p) == Follows else ''
         status = ''
@@ -216,12 +243,15 @@ def package_metadata_tree(p: PackageMetadata | Follows, lbl: str | None = None, 
                     else:
                         status = f' 🔴 {idx} versions behind master'
         if status != '':
-            tree = Tree(Columns([Align(f'{lbl}{rev}{follows}'), Align(status, align='right')], expand=True))
+            tree = Tree(
+                Columns([Align(f'{lbl}{rev}{follows}{override_tag}'), Align(status, align='right')], expand=True)
+            )
         else:
-            tree = Tree(f'{lbl}{rev}{follows}')
+            tree = Tree(f'{lbl}{rev}{follows}{override_tag}')
     if type(p) == PackageMetadata:
+        current_path = f'{_input_path}/{lbl}' if _input_path and lbl else (lbl or '')
         for k in p.inputs.keys():
-            tree.add(package_metadata_tree(p.inputs[k], k, show_status))
+            tree.add(package_metadata_tree(p.inputs[k], k, show_status, overrides, current_path))
     return tree
 
 
@@ -348,7 +378,9 @@ def list_package(
 
         if show_inputs or show_status:
             inputs = get_package_metadata(listed_package)
-            rich.print(package_metadata_tree(inputs, show_status=show_status))
+            pkg_overrides = load_overrides().get(package_name, [])
+            override_map = {ov[0]: ov[1] for ov in pkg_overrides} if pkg_overrides else {}
+            rich.print(package_metadata_tree(inputs, show_status=show_status, overrides=override_map))
         else:
             auth = (
                 {'Authorization': f'Bearer {listed_package.access_token}'}
@@ -543,6 +575,14 @@ def install_package(
             verbose=VERBOSE,
         )
 
+    # Persist override info so `kup list --inputs` can display it
+    all_overrides = load_overrides()
+    if package_overrides:
+        all_overrides[package_name.base] = package_overrides
+    else:
+        all_overrides.pop(package_name.base, None)
+    save_overrides(all_overrides)
+
     verb = 'updated' if package_name.base in installed_packages else 'installed'
 
     if package_version is not None:
@@ -606,6 +646,9 @@ def uninstall_package(package_name: str) -> None:
     package = packages[package_name]
     if type(package) == ConcretePackage or type(package) == LocalPackage:
         nix(['profile', 'remove', str(package.index)], is_install=False)
+        all_overrides = load_overrides()
+        if all_overrides.pop(package_name, None) is not None:
+            save_overrides(all_overrides)
 
 
 def ping_nix_store(url: str, access_token: str | None = None) -> tuple[bool, str | None]:
