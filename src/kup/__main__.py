@@ -9,6 +9,7 @@ import sys
 import textwrap
 import time
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, _HelpAction
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import giturlparse
@@ -44,14 +45,19 @@ from .nix import (
 )
 from .package import (
     AVAILABLE,
+    GENERATION_LINK_RE,
     INSTALLED,
     ConcretePackage,
     Follows,
     GithubPackage,
+    InstalledVersion,
     LocalPackage,
     PackageMetadata,
     PackageName,
     PackageVersion,
+    read_generation_manifests,
+    save_tags,
+    tag_cache,
 )
 from .telemetry import emit_event
 
@@ -330,32 +336,193 @@ def _format_duration(seconds: float) -> str:
     return f'{int(hours)}h {int(mins)}m'
 
 
+def _github_auth(package: GithubPackage) -> dict[str, str]:
+    if package.access_token:
+        return {'Authorization': f'Bearer {package.access_token}'}
+    token = os.getenv('GH_TOKEN')
+    if token:
+        return {'Authorization': f'Bearer {token}'}
+    return {}
+
+
+def _available_by_base(base: str) -> GithubPackage | None:
+    for p in available_packages:
+        if p.package_name.base == base:
+            return p
+    return None
+
+
+def profile_generations_dir() -> tuple[str, int] | None:
+    """Locate the Nix profile generations directory and the active generation number.
+
+    Resolves the first-level ``~/.nix-profile`` symlink -- which transparently handles
+    both the new-style (``~/.local/state/nix/profiles``) and old-style
+    (``/nix/var/nix/profiles/per-user/$USER``) locations -- and reads the ``profile``
+    symlink in that directory to find the active generation. Returns ``None`` if no
+    profile or generations can be found.
+    """
+    home = os.getenv('HOME')
+    if home is None:
+        return None
+    nix_profile = os.path.join(home, '.nix-profile')
+    if not os.path.islink(nix_profile):
+        return None
+    target = os.readlink(nix_profile)
+    if not os.path.isabs(target):
+        target = os.path.join(os.path.dirname(nix_profile), target)
+    gens_dir = os.path.dirname(target)
+    profile_link = os.path.join(gens_dir, 'profile')
+    if not os.path.islink(profile_link):
+        return None
+    match = GENERATION_LINK_RE.fullmatch(os.path.basename(os.readlink(profile_link)))
+    if match is None:
+        return None
+    return gens_dir, int(match.group(1))
+
+
+def build_history(package_filter: str | None) -> dict[str, list[InstalledVersion]]:
+    """Reconstruct, per package, the timeline of versions installed over time.
+
+    Walks the Nix profile generations in order and emits a new ``InstalledVersion`` for
+    a package only when its version differs from the previously emitted one, so that the
+    result shows version *changes* rather than every unrelated generation bump. The
+    version that is installed in the active generation is marked ``is_current``. Git tags
+    are resolved with a single GitHub request per package (plus the on-disk tag cache).
+    """
+    found = profile_generations_dir()
+    if found is None:
+        return {}
+    gens_dir, current_generation = found
+
+    history: dict[str, list[InstalledVersion]] = {}
+    last_version: dict[str, tuple[str | None, str | None]] = {}
+    current_version_per_pkg: dict[str, tuple[str | None, str | None]] = {}
+
+    for generation, date, elements in read_generation_manifests(gens_dir):
+        installed_in_gen: dict[str, tuple[str | None, str | None]] = {}
+        for element in elements.values():
+            attr_path = element.get('attrPath')
+            if not attr_path:
+                continue
+            available = lookup_available_package(attr_path)
+            if available is None:
+                continue
+            base = available.package_name.base
+            url = element.get('url', '')
+            original_url = element.get('originalUrl', '')
+            if url.startswith(available.base_repo_path):
+                installed_in_gen[base] = (url.removeprefix(f'{available.base_repo_path}/'), None)
+            elif original_url.startswith('git+file://'):
+                installed_in_gen[base] = (None, original_url.removeprefix('git+file://'))
+
+        if generation == current_generation:
+            current_version_per_pkg = dict(installed_in_gen)
+
+        for base, version in installed_in_gen.items():
+            if package_filter is not None and base != package_filter:
+                continue
+            if last_version.get(base) == version:
+                continue  # unchanged since the previous emitted entry -- collapse
+            commit, local_path = version
+            history.setdefault(base, []).append(
+                InstalledVersion(generation, date, commit, None, local_path, is_current=False)
+            )
+            last_version[base] = version
+
+    return _enrich_tags(_mark_current(history, current_version_per_pkg, current_generation))
+
+
+def _mark_current(
+    history: dict[str, list[InstalledVersion]],
+    current_version_per_pkg: dict[str, tuple[str | None, str | None]],
+    current_generation: int,
+) -> dict[str, list[InstalledVersion]]:
+    marked: dict[str, list[InstalledVersion]] = {}
+    for base, versions in history.items():
+        current = current_version_per_pkg.get(base)
+        active_idx = None
+        if current is not None:
+            for idx, v in enumerate(versions):
+                if v.generation <= current_generation and (v.commit, v.local_path) == current:
+                    active_idx = idx
+        marked[base] = [replace(v, is_current=True) if idx == active_idx else v for idx, v in enumerate(versions)]
+    return marked
+
+
+def _enrich_tags(history: dict[str, list[InstalledVersion]]) -> dict[str, list[InstalledVersion]]:
+    enriched: dict[str, list[InstalledVersion]] = {}
+    for base, versions in history.items():
+        sha_to_tag: dict[str, str | None] = {}
+        if any(v.commit for v in versions):
+            package = _available_by_base(base)
+            if package is not None and not package.ssh_git:
+                tags = requests.get(
+                    f'https://api.github.com/repos/{package.org}/{package.repo}/tags',
+                    headers=_github_auth(package),
+                )
+                if tags.ok:
+                    fetched = {t['commit']['sha']: t['name'] for t in tags.json()}
+                    save_tags(fetched)
+                    sha_to_tag.update(fetched)
+        enriched[base] = [
+            replace(v, tag=sha_to_tag.get(v.commit, tag_cache.get(v.commit)) if v.commit else None) for v in versions
+        ]
+    return enriched
+
+
+def _format_version(v: InstalledVersion) -> str:
+    if v.local_path is not None:
+        return f'local checkout ({v.local_path})'
+    if v.commit is None:
+        return ''
+    return f'{v.commit[:7]} ({v.tag})' if v.tag else v.commit[:7]
+
+
+def list_history(package_filter: str | None) -> None:
+    history = build_history(package_filter)
+    if not history:
+        target = f" for '[green]{package_filter}[/]'" if package_filter else ''
+        rich.print(f'❗ [yellow]No installation history found{target}.[/]')
+        return
+    for base in sorted(history.keys()):
+        rich.print(f'\n[bold]{base}[/]')
+        table_data = [['', 'Generation', 'Date', 'Version']] + [
+            highlight_row(
+                v.is_current,
+                ['→' if v.is_current else '', str(v.generation), v.date, _format_version(v)],
+            )
+            for v in history[base]
+        ]
+        print(SingleTable(table_data).table)
+
+
 def list_package(
     package_name: str,
     show_inputs: bool,
     show_status: bool,
     version: str | None = None,
+    show_history: bool = False,
 ) -> None:
     reload_packages()
-    if package_name != 'all':
-        if package_name not in packages.keys():
-            rich.print(
-                f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
-                "[/]Use '[blue]kup list[/]' to see all the available packages."
-            )
-            return
+    if package_name != 'all' and package_name not in packages.keys():
+        rich.print(
+            f"❗ [red]The package '[green]{package_name}[/]' does not exist.\n"
+            "[/]Use '[blue]kup list[/]' to see all the available packages."
+        )
+        return
 
+    if show_history:
+        list_history(package_name if package_name != 'all' else None)
+        return
+
+    if package_name != 'all':
         listed_package = packages[package_name].concrete(version, []) if version else packages[package_name]
 
         if show_inputs or show_status:
             inputs = get_package_metadata(listed_package)
             rich.print(package_metadata_tree(inputs, show_status=show_status))
         else:
-            auth = (
-                {'Authorization': f'Bearer {listed_package.access_token}'}
-                if listed_package.access_token
-                else {'Authorization': f'Bearer {os.getenv("GH_TOKEN")}'} if os.getenv('GH_TOKEN') else {}
-            )
+            auth = _github_auth(listed_package)
             tags = requests.get(
                 f'https://api.github.com/repos/{listed_package.org}/{listed_package.repo}/tags', headers=auth
             )
@@ -930,6 +1097,11 @@ def main() -> None:
         action='store_true',
         help='show the input dependencies of the selected package and how stale they are compared to the default branch',
     )
+    list.add_argument(
+        '--history',
+        action='store_true',
+        help='show the history of installed versions for the selected package (or all packages)',
+    )
     list.add_argument('-h', '--help', action=_HelpListAction)
 
     install = subparser.add_parser(
@@ -1021,7 +1193,7 @@ def main() -> None:
         package_name = PackageName.parse(args.package)
 
         if args.command == 'list':
-            list_package(package_name.base, args.inputs, args.status, args.version)
+            list_package(package_name.base, args.inputs, args.status, args.version, args.history)
 
         elif args.command in ['install', 'update']:
             install_package(package_name, args.version, args.override)
