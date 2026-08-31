@@ -34,6 +34,7 @@ from .nix import (
     K_FRAMEWORK_BINARY_CACHE_NAME,
     K_FRAMEWORK_CACHE,
     K_FRAMEWORK_PUBLIC_KEY,
+    PROFILE_ADD_COMMAND,
     USER_IS_TRUSTED,
     ask_install_substituters,
     get_extra_substituters_from_flake,
@@ -520,7 +521,7 @@ def install_package(
         if package_name.base in installed_packages:
             nix(['profile', 'remove', str(package.index)], is_install=False)
         nix(
-            ['profile', 'install', pinned_package_cache[package.uri]],
+            ['profile', PROFILE_ADD_COMMAND, pinned_package_cache[package.uri]],
             verbose=VERBOSE,
         )
     else:
@@ -538,7 +539,7 @@ def install_package(
         if package_name.base in installed_packages:
             nix(['profile', 'remove', str(package.index)], is_install=False)
         nix(
-            ['profile', 'install', package.uri] + overrides + git_token_options,
+            ['profile', PROFILE_ADD_COMMAND, package.uri] + overrides + git_token_options,
             extra_substituters=package.substituters,
             extra_public_keys=package.public_keys,
             verbose=VERBOSE,
