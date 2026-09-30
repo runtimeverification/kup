@@ -76,6 +76,7 @@ available_packages: list[GithubPackage] = [
     GithubPackage('runtimeverification', 'plutus-core-semantics', PackageName('kplutus')),
     GithubPackage('runtimeverification', 'mir-semantics', PackageName('kmir'), branch='release'),
     GithubPackage('runtimeverification', 'kontrol', PackageName('kontrol'), branch='release'),
+    GithubPackage('runtimeverification', 'kontrol-node', PackageName('kontrol-node'), branch='main'),
     GithubPackage('runtimeverification', 'kasmer-multiversx', PackageName('kmxwasm')),
     GithubPackage('runtimeverification', 'komet', PackageName('komet')),
     GithubPackage('runtimeverification', 'komet-node', PackageName('komet-node'), branch='main'),
