@@ -16,7 +16,7 @@ permissions:
 jobs:
 
   build-and-test:
-    name: 'Build and Test'
+    name: 'Poetry: Build and Test'
     runs-on: ubuntu-latest
     steps:
       - name: 'Check out code'
