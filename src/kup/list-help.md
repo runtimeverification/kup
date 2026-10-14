@@ -77,3 +77,24 @@ If you just want to build with a specific commit of `llvm-backend`, you can use 
 *Note*: Certain inputs in the tree have a `follows `*<path>* instead of the repository and hash. This is because they are linked to the version pointed to by *<path>*. If you want to override one of these inputs, it is almost always the case that you want to override the *<path>* input instead. ``kup` will let you proceed if you know what you are doing but issue a warning.
 
 ---
+
+# kup list --history
+
+Adding the `--history` flag shows the versions you have previously had installed for each package, reconstructed from the Nix profile generations. This is useful to find out which version you had before an upgrade. The currently-active version is marked with a `→`.
+
+```
+➜ kup list kontrol --history
+
+kontrol
+┌───┬────────────┬────────────┬──────────────────────────┐
+│   │ Generation │ Date       │ Version                  │
+├───┼────────────┼────────────┼──────────────────────────┤
+│   │ 149        │ 2025-12-02 │ 273fe5f                  │
+│   │ 157        │ 2025-12-12 │ 92ff80d                  │
+│ → │ 174        │ 2026-01-19 │ a1b2c3d (v1.0.1-a1b2c3d) │
+└───┴────────────┴────────────┴──────────────────────────┘
+```
+
+Without a package argument, `kup list --history` prints the timeline for every package that appears in the history.
+
+---

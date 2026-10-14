@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import requests
@@ -357,3 +359,53 @@ class Follows:
 
     def __init__(self, follows: list[str]):
         self.follows = follows
+
+
+@dataclass(frozen=True)
+class InstalledVersion:
+    generation: int
+    date: str  # YYYY-MM-DD, from the generation symlink mtime
+    commit: str | None  # 40-char sha for github packages, None for local checkouts
+    tag: str | None  # resolved from the tag cache / GitHub
+    local_path: str | None  # set for `git+file://` local checkouts
+    is_current: bool
+
+
+GENERATION_LINK_RE = re.compile(r'profile-(\d+)-link')
+
+
+def read_generation_manifests(gens_dir: str) -> list[tuple[int, str, dict]]:
+    """Read every Nix profile generation manifest found in ``gens_dir``.
+
+    Returns ``(generation_number, date, elements)`` tuples sorted by generation
+    number, where ``elements`` is the manifest's ``elements`` normalized to a dict
+    keyed by index (matching ``reload_packages``). Generations whose store path has
+    been garbage-collected (missing ``manifest.json``) are skipped.
+
+    This function only touches the filesystem -- no Nix or network calls -- so it can
+    be unit-tested against a fake generations tree.
+    """
+    generations: list[tuple[int, str, dict]] = []
+    if not os.path.isdir(gens_dir):
+        return generations
+    for entry in os.listdir(gens_dir):
+        match = GENERATION_LINK_RE.fullmatch(entry)
+        if match is None:
+            continue
+        link_path = os.path.join(gens_dir, entry)
+        manifest_path = os.path.join(link_path, 'manifest.json')
+        if not os.path.exists(manifest_path):
+            continue
+        with open(manifest_path) as manifest_file:
+            elements = json.loads(manifest_file.read())['elements']
+        if type(elements) is list:
+            elements = dict(enumerate(elements))
+        # fix potential inconsistencies between nix profiles (see reload_packages)
+        for element in elements.values():
+            if 'uri' in element:
+                element['url'] = element['uri']
+            if 'originalUri' in element:
+                element['originalUrl'] = element['originalUri']
+        date = datetime.fromtimestamp(os.lstat(link_path).st_mtime).strftime('%Y-%m-%d')
+        generations.append((int(match.group(1)), date, elements))
+    return sorted(generations, key=lambda gen: gen[0])

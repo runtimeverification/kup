@@ -30,6 +30,13 @@ To list all available packages, run
 kup list
 ```
 
+To see the history of versions you have previously had installed (marking the active one), add `--history`:
+
+```
+kup list --history
+kup list k --history
+```
+
 Any further functionality is described in the help commands:
 
 ```
