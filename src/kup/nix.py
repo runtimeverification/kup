@@ -102,6 +102,24 @@ SHOW_CONFIG_COMMAND = (
     .replace('"', '')
 )
 
+# `nix profile install` was renamed to `nix profile add` in Nix 2.30.
+# Use the appropriate command to avoid deprecation warnings on newer Nix versions.
+# https://nix.dev/manual/nix/2.30/release-notes/rl-2.30.html#backward-incompatible-changes-and-deprecations
+PROFILE_ADD_COMMAND = (
+    nix_raw(
+        [
+            'eval',
+            '--impure',
+            '--expr',
+            'if builtins.compareVersions builtins.nixVersion "2.30pre" == -1 then "install" else "add"',
+        ],
+        extra_flags=[],
+    )
+    .decode('utf8')
+    .strip()
+    .replace('"', '')
+)
+
 USER = pwd.getpwuid(os.getuid())[0]
 USER_IS_ROOT = os.geteuid() == 0
 
